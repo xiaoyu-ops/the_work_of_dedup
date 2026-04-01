@@ -1,11 +1,17 @@
 mix_dataset
-2026_new_experiment
+2026_new_experiment/datasets
+2026_new_experiment/artifacts_full_global
+2026_new_experiment/artifacts_10k
+2026_new_experiment/final_deduped_datasets
 # 不保存的文件类型
 *.log
 *.tmp
 *.cache
 *.bak
 *.swp
+*.bin
+*.pdf
+*.html
 *.aux
 *.out
 *.toc
