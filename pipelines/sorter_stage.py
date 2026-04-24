@@ -23,7 +23,7 @@ class SorterStageResult:
 
 
 def resolve_input_files(input_root: Path) -> List[str]:
-    from sorter import read_files_from_directory
+    from .sorter import read_files_from_directory
 
     if not input_root.exists():
         raise FileNotFoundError(f"Input root not found: {input_root}")
@@ -41,7 +41,7 @@ def run_sorter(config: PipelineConfig, manifest_path: Path, logger) -> SorterSta
 
     files = resolve_input_files(input_root)
     logger.info("Sorter stage scanning %d files", len(files))
-    from sorter import sorter as sorter_fn
+    from .sorter import sorter as sorter_fn
 
     start = time.time()
     result = sorter_fn(

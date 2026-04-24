@@ -1,0 +1,1809 @@
+% VLDB template version of 2020-08-03 enhances the ACM template, version 1.7.0:
+% https://www.acm.org/publications/proceedings-template
+% The ACM Latex guide provides further information about the ACM template
+
+%Regular Research Papers (up to 12 pages excluding references)
+%A rolling deadline occurs on the 1st of each month, 5:00 PM Pacific Time (Daylight Savings observed according to the US calendar)
+
+\documentclass[sigconf, nonacm]{acmart}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{graphicx}
+% \usepackage{geometry}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{times}
+%\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{float}
+\usepackage{tabularx} % 引入tabularx宏包
+
+\usepackage{threeparttable}
+\usepackage{multirow}
+\usepackage{pifont}
+\usepackage{array}
+
+
+\usepackage{siunitx}
+\usepackage{makecell}
+
+
+\usepackage{subcaption}
+
+
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+\newcolumntype{R}[1]{>{\raggedleft\arraybackslash}p{#1}}
+\usepackage[ruled,vlined,linesnumbered]{algorithm2e}
+
+
+
+
+%% The following content must be adapted for the final version
+% paper-specific
+\newcommand\vldbdoi{XX.XX/XXX.XX}
+\newcommand\vldbpages{XXX-XXX}
+% issue-specific
+\newcommand\vldbvolume{14}
+\newcommand\vldbissue{1}
+\newcommand\vldbyear{2026}
+% should be fine as it is
+\newcommand\vldbauthors{\authors}
+\newcommand\vldbtitle{\shorttitle} 
+% leave empty if no availability url should be set
+\newcommand\vldbavailabilityurl{https://github.com/xiaoyu-ops/VLDB26}
+% whether page numbers should be shown or not, use 'plain' for review versions, 'empty' for camera ready
+\newcommand\vldbpagestyle{plain} 
+
+\newcommand{\cmark}{\ding{51}}
+\newcommand{\xmark}{\ding{55}}
+\newcommand{\na}{--}
+\renewcommand{\arraystretch}{1.15}
+
+
+\begin{document}
+\title{MMdedup: A Parallel and Pipelined Multimodal Data Deduplication Framework for MLLM Training}
+
+%%
+%% The "author" command and its associated commands are used to define the authors and their affiliations.
+ \author{Zhuoyang Wu}
+ \affiliation{Sun Yat-sen University}
+%   \streetaddress{P.O. Box 1212}
+%   \city{Shenzhen}
+%   \state{China}
+%   \postcode{518107} }
+ \email{wuzhy236@mail2.sysu.edu.cn}
+
+   \author{Qingli Zeng}
+  \affiliation{University of South Carolina Upstate}
+  \email{qingli@uscupstate.edu}
+
+ \author{Yinjin Fu}
+  \affiliation{Sun Yat-sen University}
+  \email{fuyj27@mail.sysu.edu.cn} 
+  
+  \author{Nong Xiao}
+  \affiliation{Sun Yat-sen University}
+  \email{xiaon6@mail.sysu.edu.cn}
+
+
+%%
+%% The abstract is a short summary of the work to be presented in the
+%% article.
+\begin{abstract}
+
+Deduplication is an essential data cleaning technique to enhance data quality for multimodal large language model (MLLM) training by identifying and removing redundant or duplicate data. Existing data deduplication methods usually assume that data is pre-sorted or focus only on a single modality, which creates a critical gap when handling raw, heterogeneous datasets. In this paper, we propose MMdedup, a highly efficient multimodal data deduplication framework to improve the efficiency of MLLM training and data storage. It designs a parallel and pipelined classification-and-clean architecture, which first employs a lightweight heuristic sorter to automatically execute robust data classification. Subsequently, MMdedup performs modality-specific deep cleaning techniques to eliminate both exact-duplicate and near-duplicate data for each modality. We evaluated MMdedup on TB-scale datasets via prototype implementation. Experimental results demonstrate that our sorter achieves 100\% classification accuracy on constructed adversarial inputs, while deduplication modules reduce storage by 46-90\% depending on modality. Compared to state-of-the-art methods, our image deduplication achieves 3.6$\times$ higher throughput while improving downstream model accuracy, our audio deduplication can achieve the highest downstream accuracy of 92.01\%, and our text deduplication matches MinHash quality with 14\% faster processing. Ablation studies confirm that our near-duplicate detection framework contributes over 20 percentage points of additional deduplication beyond exact matching, validating our core design.
+
+
+
+%Deduplication is an essential data cleaning technique to enhance data quality for multimodal large language model (MLLM) training by identifying and removing redundant or duplicate data. Existing data deduplication methods usually assume that data is pre-sorted or focus only on a single modality, which creates a critical gap when handling raw, heterogeneous datasets. In this paper, we propose MMdedup, a highly efficient multimodal data deduplication framework to improve the efficiency of MLLM training and data storage. It designs a parallel and pipelined classification-and-clean architecture, which first employs a lightweight heuristic sorter to automatically execute robust data classification. Subsequently, MMdedup performs modality-specific deep cleaning techniques to eliminate both exact-duplicate and near-duplicate data for each modality. Finally, we build a prototype system to evaluate the end-to-end effectiveness of MMdedup framework. Our experimental results demonstrate that MMdedup can achieve 98.5\% accuracy for data classification on a real-world mixed-modality dataset, and reduce data storage volume by 25.9\%-32.5\%, while maintaining or markedly improving the accuracy of model training. Moreover, it significantly outperforms state-of-the-art methods for the end-to-end throughput of the raw multimodal datasets.
+
+%There are unstructured, heterogeneous data collections with a lot of redundancy in multimodal large language model (MLLM) training application, often form a chaotic "digital swamp", posing significant challenges to machine learning workflows. Existing data cleaning methods usually assume that data is pre-sorted or focus only on a single modality, which creates a critical gap when handling raw, mixed-media web-crawled data. In this paper, we propose \textbf{MMdedup}, a high performance multimodal data deduplication  framework to improve the efficiency of AI training and data storage. It designs a novel  \textbf{"Classification-and-Clean"} architecture, which first employs a lightweight heuristic sorter for automated and robust data classification. Subsequently, MMdedup integrates and adapts state-of-the-art modality-specific deep cleaning techniques: CLIP embeddings based semantic deduplication for images, acoustic fingerprinting based audio deduplication, and multi-granularity N-gram method for text deduplication. Our experiments demonstrate the end-to-end effectiveness of this framework. The sorter can achieve 98.5\% accuracy on a challenging mixed-format benchmark, and the entire pipeline can significantly reduce data volume (e.g., audio reduced by 47.7\%) while maintaining or markedly improving downstream classification accuracy. MMdedup provides a practical, scalable, and integrated solution to transform raw web data into high-quality corpora.
+
+\end{abstract}
+
+\maketitle
+
+
+%%% do not modify the following VLDB block %%
+%%% VLDB block start %%%
+\pagestyle{\vldbpagestyle}
+\begingroup\small\noindent\raggedright\textbf{PVLDB Reference Format:}\\
+\vldbauthors. \vldbtitle. PVLDB, \vldbvolume(\vldbissue): \vldbpages, \vldbyear.\\
+\href{https://doi.org/\vldbdoi}{doi:\vldbdoi}
+\endgroup
+\begingroup
+\renewcommand\thefootnote{}\footnote{\noindent
+This work is licensed under the Creative Commons BY-NC-ND 4.0 International License. Visit \url{https://creativecommons.org/licenses/by-nc-nd/4.0/} to view a copy of this license. For any use beyond those covered by this license, obtain permission by emailing \href{mailto:info@vldb.org}{info@vldb.org}. Copyright is held by the owner/author(s). Publication rights licensed to the VLDB Endowment. \\
+\raggedright Proceedings of the VLDB Endowment, Vol. \vldbvolume, No. \vldbissue\ %
+ISSN 2150-8097. \\
+\href{https://doi.org/\vldbdoi}{doi:\vldbdoi} \\
+}\addtocounter{footnote}{-1}\endgroup
+%%% VLDB block end %%%
+
+%%% do not modify the following VLDB block %%
+%%% VLDB block start %%%
+\ifdefempty{\vldbavailabilityurl}{}{
+\vspace{.3cm}
+\begingroup\small\noindent\raggedright\textbf{PVLDB Artifact Availability:}\\
+The source code, data, and/or other artifacts have been made available at \url{\vldbavailabilityurl}.
+\endgroup
+}
+%%% VLDB block end %%%
+
+\vspace{-2mm}
+
+\section{Introduction}
+
+Data quality and diversity are crucial for large language model (LLM) training, as they directly impact model performance, accuracy, and ethical considerations in AI development. As the LLMs grow increasingly sophisticated, capable of generating human-like text and tackling complex tasks, the need for meticulously curated datasets becomes paramount \cite{TrainLLM, TrainingLLM2024}. Multimodal large language model (MLLM) \cite{Yin2024, Zhang2024} can perform tasks that were previously challenging or impossible for single-modality models by processing and integrating multiple types of data or sensory inputs, such as text, images and audio. Web-crawled data has become the primary source of training data for MLLMs due to its large-scale and diversity \cite{raffel2020exploring, gao2020pile}. However, these massive amounts of raw web data rarely conform to clean, structured formats that can be immediately used by AI models. Instead, they often manifest as a chaotic 'digital swamp' which is an unstructured, heterogeneous data collection, posing two serious data engineering challenges. Firstly, these datasets exhibit inherent heterogeneity, intermixing diverse modalities, such as images, audio, text, ambiguous binary files, and metadata links within a single corpus, etc. Handling such heterogeneity under resource constraints is a critical infrastructure challenge. Just as CompactST \cite{CompactST} introduces specialized normalizers to tackle domain heterogeneity in data-scarce settings, we introduce a specialized 'Classification' mechanism to disentangle format heterogeneity at the ingestion stage. Secondly, these data collections suffer from pervasive redundancy, encompassing both exact duplicates and, more subtly, near-duplicate content arising from templates, paraphrasing, or cross-site aggregation. Recent work \cite{lee2022deduplicating} demonstrated high redundancy even in seemingly curated datasets. Such data redundancy not only increases computational costs, but also damages the AI model's generalization ability by cultivating undesirable memorization.
+
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.48\textwidth]{figures/figure00.pdf}
+	\caption{Data cleaning techniques taxonomy.}
+	\label{fig:taxonomy}
+    \vspace{-3mm}
+\end{figure}  
+
+
+%As illustrated in Figure~\ref{fig:taxonomy}, existing training data cleaning methods for MLLMs can be broadly categorized into three independent lines of work. Despite the importance of data quality has been widely recognized, existing data preprocessing and cleaning methods often struggle to cope with the complexity of the digital swamp \cite{Ilyas2019}. The most advanced data cleaning frameworks \cite{rekatsinas2017,Song2021,Naeem2024,ding2025} mainly focus on detecting and repairing dirty data within structured or semi-structured datasets, implicitly assuming pre-classified unimodal inputs. Moreover, although sophisticated techniques for near-duplicate detection within specific modalities, such as the suffix-array and MinHash approaches, have made significant progress in the text detailed in \cite{lee2022deduplicating}, they often lack an integrated, automated front-end capable of navigating the initial chaos of raw, multi-modality web harvests. This leaves a critical gap: the absence of an end-to-end automated framework that can first perform robust classification on the heterogeneous input data and then apply modality-aware deep data cleaning.
+
+As illustrated in Figure~\ref{fig:taxonomy}, existing training data cleaning methods can be broadly categorized into three independent lines of work. Despite the widely recognized importance of data quality, existing data preprocessing and cleaning methods often struggle to cope with the complexity of the digital swamp~\cite{chu2016data}. State-of-the-art data cleaning frameworks~\cite{dallachiesa2013nadeef, rekatsinas2017, mahdavi2019raha, Song2021, Naeem2024, ding2025} mainly focus on detecting and repairing dirty data within structured or semi-structured datasets, implicitly assuming pre-classified unimodal inputs. 
+Traditional data deduplication techniques~\cite{Xia2016, Fu2025} target byte-identical redundancy removal at the file or chunk level, using cryptographic hashes such as MD5~\cite{rivest1992md5} and SHA-256 for file-level matching, or content-defined chunking via Rabin fingerprinting~\cite{rabin1981fingerprinting, muthitacharoen2001low} for finer-grained deduplication.
+
+%Traditional data deduplication techniques~\cite{Fu2025, Xia2016} target identical data copies removal at the file or chunk level for storage and transfer efficiency. 
+Moreover, although sophisticated techniques for near-duplicate detection (NDD) within specific modalities, such as the suffix-array and MinHash approaches for text~\cite{lee2022deduplicating}, semantic embedding methods for images~\cite{abbas2023semdedup}, and acoustic fingerprinting techniques originally developed for audio retrieval~\cite{wang2003industrial}, have made significant progress, they each operate on a single pre-classified modality and lack an integrated, automated front end that can handle the initial chaos of raw, multimodal web harvests.
+
+In this paper, we introduce MMdedup, a parallel and pipelined multimodal data deduplication framework for data cleaning in MLLM training. It automatically transforms raw and chaotic web data into high-quality, non-redundant corpora optimized for downstream machine learning applications by leveraging the "classification-before-clean" philosophy. The MMdedup framework consists of two different stages: \textit{automatic classification} and \textit{modality-aware data deduplication}. Firstly, it designs a lightweight but powerful heuristic sorter to reliably classify raw input files into modality specific subsets by utilizing a range of content driven checks, including magic sniffing, printability analysis, and JSON semantic parsing. This observation-driven design aligns with recent system research like LogLite \cite{tang2025loglite}, which proves that simple heuristic features (e.g., log length) are often sufficient to achieve wire-speed processing in streaming tasks, avoiding the latency overhead of heavy models. Secondly, MMdedup utilizes a modality-aware data deduplication technique to carefully select the modality specific algorithm for each classification subset, such as the semantic understanding of CLIP (Contrastive Language-Image Pretraining) embedding for image deduplication \cite{radford2021learning}, our newly proposed robust and scalable acoustic fingerprinting for audio deduplication, and the multi-granularity N-gram method to capture syntactic similarity for text deduplication \cite{broder1997resemblance}. The main novelty lies not only in the design of these individual components, but also in their collaborative integration to validate as an end-to-end solution for the MLLM training data cleaning.
+
+
+To the best of our knowledge, MMdedup is the first research work on multimodal data deduplication for MLLM training. Our main contributions are as follows:
+
+\begin{itemize}
+
+    \item We propose MMdedup, a parallel and pipelined multimodal data deduplication framework that transforms raw, heterogeneous web data into clean training corpora by eliminating both exact and near-duplicate content across modalities.
+    
+    \item We design a lightweight heuristic sorter that achieves 100\% classification accuracy on adversarial inputs while maintaining high throughput of 4.25K files/second.
+    \item We introduce an acoustic fingerprinting based audio deduplication method and a modality-aware data deduplication technique by integrating the advanced modality-specific deep cleaning techniques to remove near-duplicate after exact deduplication.
+    
+    \item We implement a prototype of MMdedup and conduct comprehensive experiments on datasets totaling nearly 1TB. Our results demonstrate significant data reduction while maintaining or improving downstream model accuracy.
+\end{itemize}
+
+
+%The remainder of this paper is organized as follows. Section~\ref{sec:related} reviews related work. Section~\ref{sec:design} presents the MMdedup framework design. Section~\ref{sec:setup} describes the experimental setup, and Section~\ref{sec:results} reports evaluation results. Section~\ref{sec:discussion}  discusses efficiency, scalability, and limitations. Section~\ref{sec:conclusion} concludes the paper.
+
+\begin{comment}
+\section{Related Work}
+\label{sec:related_work}
+
+The success of LLMs critically depends on the quality of the input data. However, data sourced from web crawls often suffers from noise, inconsistencies, and redundancy, posing significant challenges to model training and downstream applications. In this section, we review the most relevant work of our MMdedup framework: data cleaning, data deduplication, and data classification.
+
+\subsection{Data Cleaning}
+
+ Data cleaning is a broad field encompassing tasks such as error detection and correction, missing value imputation, and data deduplication. Existing data cleaning systems, such as HoloClean \cite{rekatsinas2017} and UniClean\cite{ding2025}, have revolutionized structured data repair through probabilistic inference and unified operator optimization. However, these state-of-the-art systems generally operate on datasets that already possess some structure (e.g., relational tables) or conform to a known schema. Their primary focus is often on value correctness and exact duplicates, with less emphasis on near-duplicate removal across collections of unstructured files. What is more, they lack an automated data classification mechanism to handle raw input data, and often assume that the input datasets are already modality-specific and somewhat organized, differing significantly from the initial state of real-world web data. Hence, these works are inherently ill-suited for the chaotic 'digital swamp' of raw web dumps, which requires a robust and modality-aware classification mechanism that MMdedup provides as a prerequisite step.
+
+\subsection{Data Deduplication}
+
+Data deduplication is a foundational data cleaning technique focused on removing redundant or duplicate data to improve data quality, save storage space, and optimize data transfers. Traditional data deduplication only focuses on exact duplicate removal to improve communication or storage efficiency for various application datasets \cite{Xia2016, Fu2025}. As demonstrated by \cite{lee2022}, we can further improve data quality and processing efficiency for LLM training by identifying and eliminating near-duplicate content beyond exact deduplication. Hence, our MMdedup framework integrates optimized near-duplicate detection (NDD) techniques tailored for different data modalities.
+
+\textbf{\textit{Text.}}
+In classic approaches, they often rely on N-gram features coupled with Jaccard similarity to detect near-duplicate text, and can be accelerated using techniques such as MinHash or LSH \cite{broder1997resemblance}. Lee et al.\cite{lee2022} also employed MinHash alongside suffix arrays for exact substring matching in large text corpora. However, standard N-gram methods typically operate at a single granularity (character or word). 
+
+%\textcolor{red}{To capture both local spelling variations and broader phrase structures simultaneously, we propose an enhanced multi-granularity approach that fuses character-level and word-level N-gram feature sets, which is designed to capture both local spelling variations and broader phrase structures more robustly than single-granularity methods. Furthermore, to enhance efficiency for large-scale comparisons while maintaining high recall, we designed a hierarchical filtering mechanism , incorporating length pre-filtering and sample-based comparisons, significantly reducing the computational complexity from $O(n^2)$. Thus, our text method represents an optimized N-gram strategy for large-scale text deduplication.}
+
+\textbf{\textit{Image.}}
+Traditional image deduplication methods based on pixel values or simple hashes struggle to capture semantic similarity and lack robustness to transformations like rotation, scaling, or lighting changes. Semantic embeddings derived from deep learning models have become the mainstream, particularly powerful representations from vision-language models like CLIP \cite{radford2021}. 
+
+%Our work is the first to leverage CLIP embeddings for large-scale image deduplication. Compared to traditional methods, this allows for more accurate identification of semantically similar images, even if they differ significantly at the pixel level.To address scalability, we combine CLIP embeddings with optimized K-Means clustering (employing spherical K-Means suitable for normalized embeddings and leveraging Faiss for acceleration) and designed a divide-and-conquer intra-cluster comparison strategy (Algorithm 1), effectively reducing the complexity from $O(n^2)$ to approximately $O(n^{3/2})$. Our image approach is thus a scalable solution that first utilizes state-of-the-art semantic embeddings (CLIP) combined with an optimized clustering strategy for near-duplicate image removal.
+
+\textbf{\textit{Audio.}}
+Compared to text and images, research specifically targeting near-duplicate detection for audio is relatively less extensive, lacking widely adopted standard methods.We are the first to propose a systematic audio deduplication method based on analyzing spectrograms to capture key time-frequency features, converting them into robust binary fingerprints , and then utilizing Locality-Sensitive Hashing (LSH) \cite{datar2004lsh} for efficient similarity retrieval. While spectrogram analysis and LSH are established techniques in audio processing and indexing \cite{zhang2015sift}, combining them in this specific manner for the task of large-scale audio deduplication is, to the best of our knowledge, novel. 
+
+%Our contribution lies in proposing and validating the effectiveness of this complete pipeline.Experimental results (Sec 6.2) demonstrate that this approach is not only highly effective (improving downstream model performance even after removing nearly 48\% of the data) but also scalable. Our audio method represents a novel, systematic approach based on spectrogram fingerprinting and LSH, proven feasible and efficient for large-scale web audio cleaning.
+
+\subsection{Data Classification}
+Accurately identifying file types is a prerequisite for processing heterogeneous data.Common methods rely on file extensions or file magic numbers. However, these approaches often fail when dealing with messy web data due to missing or incorrect extensions, generic binary containers (e.g., `.bin`), or ambiguous content types like JSON files.
+
+%Our Sorter (Sec 3.1) is designed specifically to overcome these challenges.It employs a \textbf{multi-layer mixed heuristic strategy}, combining magic number sniffing, printability analysis, JSON semantic parsing, and fault-tolerant fallback mechanisms , offering a more robust solution than naive methods. We validated its effectiveness against a baseline in Section 4.
+
+\subsection*{Positioning Our Work}
+In summary, existing work either focuses on deep cleaning of specific data types with pre-sorted input, or uses simplistic file identification methods that are ill-suited for web data chaos. A gap exists for an end-to-end, automated pipeline capable of handling raw, multi-modality "digital swamps" by integrating both robust classification and deep, modality-specific near-duplicate cleaning. MMdedup tries to fill this gap with its novel classification-and-clean architecture, featuring a robust Sorter and the systematic integration of optimized or novel modality-specific deduplication pipelines, offering a validated, practical solution for generating high-quality machine learning corpora from chaotic web data.
+\end{comment}
+
+\section{Related Work}
+\label{sec:related}
+
+The selection of high-quality training data has emerged as a critical bottleneck for large-scale machine learning, particularly for multimodal large language models (MLLMs). As training corpora scale to billions of samples sourced from heterogeneous web crawls, the challenges of data redundancy, quality control, and efficient processing become increasingly pronounced. We organized related work into five areas: data cleaning, text deduplication, image deduplication, audio deduplication, and file type identification.
+
+\vspace{-1mm}
+\subsection{Data Cleaning}
+
+ Data cleaning is a broad field encompassing tasks such as error detection and correction, missing value imputation, and data deduplication. Existing data cleaning systems, such as HoloClean \cite{rekatsinas2017} and UniClean \cite{ding2025}, have revolutionized structured data repair through probabilistic inference and unified operator optimization. However, these state-of-the-art systems generally operate on datasets that already possess some structure (e.g., relational tables) or conform to a known schema. Their primary focus is often on value correctness and exact duplicates, with less emphasis on near-duplicate removal across collections of unstructured files. What is more, they lack an automated data classification mechanism to handle raw input data, and often assume that the input datasets are already modality-specific and somewhat organized, differing significantly from the initial state of real-world web data. Hence, these works are inherently ill-suited for the chaotic 'digital swamp' of raw web dumps, which requires a robust and modality-aware classification mechanism that MMdedup provides as a prerequisite step.
+
+ Data deduplication is a foundational data cleaning technique focused on removing redundant or duplicate data to improve data quality, save storage space, and optimize data transfers. Traditional data deduplication only focuses on exact duplicate removal to improve communication or storage efficiency for various application datasets \cite{Fu2025, Xia2016}. As demonstrated by \cite{lee2022deduplicating}, we can further improve data quality and processing efficiency for LLM training by identifying and eliminating near-duplicate content beyond exact deduplication. Hence, our MMdedup framework integrates optimized near-duplicate detection (NDD) techniques tailored for different data modalities.
+
+
+
+\begin{table*}[t!]
+  \centering
+  \small
+  \setlength{\tabcolsep}{5.2pt}
+  \begin{threeparttable}
+    \caption{Comparison of MMdedup with representative deduplication approaches.}
+    \label{tab:comparison}
+    \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}} l c c c c c c c c @{}}
+      \toprule
+      \multirow{2}{*}{\textbf{Method}} &
+      \multicolumn{3}{c}{\textbf{Input Handling}} &
+      \multicolumn{3}{c}{\textbf{Deduplication}} &
+      \multicolumn{2}{c}{\textbf{Pipeline}} \\
+      \cmidrule(lr){2-4}\cmidrule(lr){5-7}\cmidrule(lr){8-9}
+      & \textbf{Mixed} & \textbf{Auto} & \textbf{Raw}
+      & \textbf{Text} & \textbf{Image} & \textbf{Audio}
+      & \textbf{E2E} & \textbf{Config.} \\
+      \midrule
+      \multicolumn{9}{@{}l}{\textbf{Text Deduplication}} \\
+      \addlinespace[1pt]
+      MinHash-LSH~\cite{broder1997resemblance} & \xmark & \na   & \xmark & \cmark & \xmark & \xmark & \xmark & \xmark \\
+      D4~\cite{tirumala2023d4}                 & \xmark & \na   & \xmark & \cmark & \xmark & \xmark & \xmark & \cmark \\
+      LSHBloom~\cite{khan2024lshbloom}         & \xmark & \na   & \xmark & \cmark & \xmark & \xmark & \xmark & \xmark \\
+      \addlinespace[2pt]
+      \multicolumn{9}{@{}l}{\textbf{Image Deduplication}} \\
+      \addlinespace[1pt]
+      pHash~\cite{zauner2010implementation}    & \xmark & \na   & \xmark & \xmark & \cmark & \xmark & \xmark & \xmark \\
+      SemDeDup~\cite{abbas2023semdedup}        & \xmark & \na   & \xmark & \xmark & \cmark & \xmark & \xmark & \cmark \\
+      \addlinespace[2pt]
+      \multicolumn{9}{@{}l}{\textbf{Audio Deduplication}} \\
+      \addlinespace[1pt]
+      Shazam~\cite{wang2003industrial}             & \xmark & \na   & \xmark & \xmark & \xmark & \cmark & \xmark & \xmark \\
+      Neural Audio FP~\cite{chang2021neural}   & \xmark & \na   & \xmark & \xmark & \xmark & \cmark & \xmark & \xmark \\
+      \addlinespace[2pt]
+      \multicolumn{9}{@{}l}{\textbf{File Type Detection}} \\
+      \addlinespace[1pt]
+      libmagic~\cite{darwin2008libmagic}       & \cmark & \cmark & \cmark & \na   & \na   & \na   & \xmark & \xmark \\
+      Magika~\cite{fratantonio2024magika}      & \cmark & \cmark & \cmark & \na   & \na   & \na   & \xmark & \xmark \\
+      \midrule
+      \textbf{\textsc{MMdedup} (Our Paper)}         & \cmark & \cmark & \cmark & \cmark & \cmark & \cmark & \cmark & \cmark \\
+      \bottomrule
+    \end{tabular*}
+    \begin{tablenotes}[flushleft]
+      \footnotesize
+      \item \cmark~supported; \xmark~not supported; \na~not applicable.
+    \end{tablenotes}
+  \end{threeparttable}
+\end{table*}
+
+\vspace{-1mm}
+\subsection{Text Deduplication}
+
+The impact of data deduplication on language model training has been extensively studied in recent years. Lee et al.~\cite{lee2022deduplicating} provided foundational empirical evidence that deduplicating training data significantly improves language model quality. Using exact substring matching via suffix arrays and approximate document-level matching via MinHash, they demonstrated that deduplicated models emit memorized content 10$\times$ less frequently while achieving equivalent or better perplexity. This work established deduplication as a standard preprocessing step for LLM training pipelines.
+
+MinHash combined with Locality-Sensitive Hashing (LSH)~\cite{broder1997resemblance, broder1998min} has become the de facto standard for large-scale near-duplicate detection. By approximating Jaccard similarity between document shingle sets, MinHash-LSH enables sub-quadratic complexity for candidate pair identification. The technique has been widely adopted in major training pipelines, including GPT-3~\cite{brown2020language}, which applied fuzzy deduplication to Common Crawl using Spark's MinHashLSH implementation. Recent work by Khan et al.~\cite{khan2024lshbloom} introduced LSHBloom, which replaces the traditional LSH index with Bloom filters to achieve a 12$\times$ speedup and an 18$\times$ reduction in memory usage. These improvements are critical for datasets exceeding 10TB.
+
+Beyond syntactic similarity, semantic deduplication identifies samples with similar meaning but different surface forms. Tirumala et al.~\cite{tirumala2023d4} proposed D4, which combines embedding-based clustering with diversity-aware sampling. By using pre-trained model embeddings to identify semantically redundant documents, D4 achieved 20\% training efficiency gains and up to 2\% accuracy improvements on downstream NLP tasks at the 6.7B parameter scale. The C4 corpus~\cite{raffel2020exploring}, created for T5 training, pioneered large-scale web text deduplication by applying heuristic filtering and three-sentence span deduplication to Common Crawl, producing a 750GB clean corpus from 20TB of raw data.
+
+
+
+\subsection{Image Deduplication}
+
+Image deduplication presents distinct challenges compared to text, as visual similarity operates at multiple levels ranging from pixel-level identity to semantic equivalence. Traditional approaches employ perceptual hashing algorithms such as pHash and dHash~\cite{zauner2010implementation}, which generate compact fingerprints robust to minor transformations like resizing, compression, and color adjustment. These methods offer $O(n)$ complexity for fingerprint generation and $O(1)$ comparison via Hamming distance, making them suitable for large-scale deployment. However, perceptual hashes struggle with semantic similarity. For example, two images of different dogs can produce very different hashes even though they are semantically equivalent.
+
+Recent advances leverage deep learning embeddings for semantic deduplication. Abbas et al.~\cite{abbas2023semdedup} introduced SemDeDup, which uses pre-trained CLIP embeddings to identify image pairs that are semantically similar but not visually identical. On LAION-440M, SemDeDup removed 50\% of data with minimal performance loss, effectively halving training time while improving out-of-distribution generalization. The key insight is that foundation model embeddings capture semantic similarity that traditional hashing misses, enabling more aggressive deduplication without quality degradation.
+
+For web-scale datasets, exact pairwise comparison is intractable. SemDeDup addresses this through $k$-means clustering followed by intra-cluster deduplication, reducing complexity from $O(n^2)$ to $O(n^2/k)$. 
+The DataComp benchmark~\cite{gadre2023datacomp} further demonstrated that combining CLIP-score filtering with embedding-based deduplication produces superior training datasets; their DataComp-1B subset trains a ViT-L/14 to 79.2\% ImageNet zero-shot accuracy, outperforming models trained on the full LAION-2B.
+
+
+
+
+\begin{comment}
+\subsection{Text Deduplication}
+
+The impact of data deduplication on language model training has been extensively studied in recent years. Lee et al. \cite{lee2022deduplicating} provided the foundational empirical evidence that deduplicating training data significantly improves language model quality. Using a combination of exact substring matching via suffix arrays and approximate document-level matching via MinHash, they demonstrated that deduplicated models emit memorized content 10× less frequently while achieving equivalent or better perplexity. This work established deduplication as a standard preprocessing step for LLM training pipelines.
+
+\textbf{Approximate Matching Methods.} MinHash combined with Locality-Sensitive Hashing (LSH) \cite{broder1997resemblance, broder1998min} has become the de facto standard for large-scale near-duplicate detection in text. By approximating Jaccard similarity between document shingle sets, MinHash-LSH enables sub-quadratic complexity for candidate pair identification. The technique has been widely adopted in major training data pipelines, including those for GPT-3 \cite{brown2020language}, which applied fuzzy deduplication to Common Crawl using Apache Spark's MinHashLSH implementation. Recent work by Khan et al. \cite{khan2024lshbloom} introduced LSHBloom, which replaces the traditional LSH index with Bloom filters, achieving 12× speedup and 18× reduction in memory usage, which is a critical improvements for datasets exceeding 10TB.
+
+\textbf{Semantic Deduplication.} Beyond syntactic similarity, semantic deduplication identifies samples with similar meaning but different surface forms. Tirumala et al. \cite{tirumala2023d4} proposed D4 (Document De-Duplication and Diversification), which combines embedding-based clustering with diversity-aware sampling. By using pre-trained model embeddings to identify semantically redundant documents, D4 achieved 20\% training efficiency gains and up to 2\% accuracy improvements on downstream NLP tasks at the 6.7B parameter scale. This work demonstrated that intelligent data selection can outperform random sampling of larger datasets.
+
+\textbf{Dataset-Specific Efforts.} The C4 (Colossal Clean Crawled Corpus) dataset \cite{raffel2020exploring}, created for training T5, pioneered large-scale deduplication for web text. Starting from 20TB of Common Crawl data, the C4 pipeline applied heuristic filtering, language detection, and three-sentence span deduplication to produce a 750GB clean corpus. Similarly, The Pile \cite{gao2020pile} combined 22 diverse sources with careful deduplication to create an 800GB dataset that became a standard benchmark for open LLM training.
+
+\subsection{Visual Data Deduplication}
+Image deduplication presents distinct challenges compared to text, as visual similarity operates at multiple levels, ranging from pixel-level identity to semantic equivalence.
+
+\textbf{Perceptual Hashing.} Traditional approaches employ perceptual hashing algorithms such as pHash (perceptual hash) and dHash (difference hash) \cite{zauner2010implementation}, which generate compact fingerprints robust to minor transformations like resizing, compression, and color adjustment. These methods offer O(n) complexity for fingerprint generation and O(1) comparison via Hamming distance, making them suitable for large-scale deployment. However, perceptual hashes struggle with semantic similarity, as two images of different dogs will have very different hashes despite being semantically equivalent.
+
+\textbf{Embedding-Based Methods.} Abbas et al. \cite{abbas2023semdedup} introduced SemDeDup, which leverages pre-trained CLIP embeddings to identify semantic duplicates, namely image pairs that are semantically similar but not visually identical. On LAION-440M, SemDeDup removed 50\% of data with minimal performance loss on downstream tasks, effectively halving training time while improving out-of-distribution generalization. The key insight is that foundation model embeddings capture semantic similarity that traditional hashing methods miss, enabling more aggressive deduplication without quality degradation.
+
+\textbf{Scalability Considerations.} For web-scale datasets, exact pairwise comparison is intractable. SemDeDup addresses this through k-means clustering followed by intra-cluster deduplication, reducing complexity from O(n²) to O(n²/k). The DataComp benchmark \cite{gadre2023datacomp} further demonstrated that combining CLIP-score filtering with embedding-based deduplication produces datasets that train more capable models with less compute. In particular, their DataComp-1B subset trains a ViT-L/14 to 79.2\% ImageNet zero-shot accuracy, outperforming models trained on the full LAION-2B dataset.
+\end{comment}
+
+
+\subsection{Audio Deduplication}
+
+Audio deduplication relies on acoustic fingerprinting techniques that extract compact representations robust to noise and compression. The foundational work by Wang~\cite{wang2003industrial} introduced spectrogram peak-based fingerprinting, where local maxima in the time-frequency domain are paired and hashed to create distinctive signatures. This approach, commercialized as Shazam, remains influential due to its robustness against background noise and audio degradation. Subsequent systems such as Chromaprint~\cite{chromaprint} adopted similar constellation-based methods optimized for near-duplicate detection in music libraries. Recent advances leverage deep learning for more robust fingerprinting. Chang et al.~\cite{chang2021neural} proposed a neural audio fingerprinting system based on contrastive learning, achieving 10$\times$ storage reduction while maintaining retrieval accuracy under various distortions including noise, reverberation, and codec compression.  
+
+Despite these advances, audio deduplication has received less attention than text and image modalities in the context of ML training data curation. Existing multimodal dataset efforts such as LAION-5B and DataComp focus primarily on image-text pairs, leaving audio data, which is increasingly important for speech and multimodal models, largely unaddressed.
+
+
+
+\begin{comment}
+\subsection{Multimodal Dataset Curation} 
+The emergence of vision-language models has driven significant research into multimodal dataset construction and curation.
+
+\textbf{Large-Scale Dataset Construction.} LAION-5B \cite{schuhmann2022laion} established the paradigm for open multimodal datasets, providing 5.85 billion CLIP-filtered image-text pairs derived from Common Crawl. The curation pipeline applies CLIP similarity thresholds ($\ge$0.28 for English pairs) to filter noisy web data, along with NSFW detection and watermark identification. This dataset enabled the training of Stable Diffusion and open CLIP reproductions, demonstrating that filtered web data can match proprietary datasets in downstream performance.
+
+\textbf{Benchmark-Driven Curation.} The DataComp benchmark \cite{gadre2023datacomp} formalized multimodal dataset curation as a research problem, providing CommonPool (12.8B image-text pairs) alongside standardized training protocols and evaluation suites. By fixing model architecture and hyperparameters, DataComp enables controlled comparison of filtering strategies. Key findings include: (1) CLIP-score filtering consistently improves over random sampling, (2) deduplication against evaluation sets prevents contamination, and (3) combining multiple filtering criteria yields compounding benefits.
+
+\textbf{Quality vs. Quantity Trade-offs.} Recent work has challenged the assumption that more data is always better. Fang et al. \cite{fang2023data} demonstrated that Data Filtering Networks, which are models trained to distinguish high-quality samples from low-quality ones, can identify subsets that outperform training on full datasets. Similarly, the JEST framework \cite{evans2024data} showed that jointly selecting learnable batches can achieve equivalent performance with 10$\times$ fewer training iterations, suggesting that data curation may be more impactful than data scale.
+
+\textbf{Gap in Current Approaches.} Existing multimodal curation pipelines share a critical assumption: the input data is already modality-homogeneous. LAION processes image-text pairs, C4 processes text documents, and AudioSet processes audio clips. None address the ``digital swamp'' scenario in which raw web crawls contain intermixed files of unknown modality, including images, audio, text, archives, and executables, within a single directory structure and without reliable metadata. This gap motivates our work on unified multimodal deduplication.
+\end{comment}
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\textwidth]{figures/figure1.pdf}
+	\caption{The MMdedup architecture.}
+	\label{fig:system}
+    \vspace{2mm}
+\end{figure*}  
+
+\vspace{-2mm}
+\subsection{File Type Identification}
+
+Accurate file type classification is essential for routing heterogeneous data to appropriate processing pipelines. The traditional approach relies on magic bytes, which are characteristic byte patterns at known file offsets. McDaniel and Heydari~\cite{mcdaniel2003content} systematically evaluated content-based file type detection algorithms, including byte frequency analysis and header/trailer matching, reporting accuracy ranging from 23\% to 96\% depending on the algorithm and file type. Li et al.~\cite{li2005fileprints} introduced file fingerprints using n-gram analysis, achieving improved robustness over simple signature matching. Modern implementations such as libmagic maintain over 5,000 signatures, achieving 95--100\% accuracy on well-formed files with standard headers~\cite{gopal2011statistical}.
+
+Despite their efficiency, signature-based methods struggle with several scenarios common in web-crawled data. Gopal and Yang~\cite{gopal2011statistical} demonstrated that commercial off-the-shelf solutions fail catastrophically on damaged files, with some unable to identify corrupted files at all. Key limitations include corrupted headers from incomplete downloads, missing or misleading file extensions, text-based formats (JSON, CSV, plain text) that lack distinctive signatures, and polyglot files valid under multiple formats.
+
+To address these limitations, researchers have explored neural approaches to content-based file type detection. Raff et al. \cite{raff2017malware} introduced MalConv, a convolutional neural network that processes raw byte sequences of up to two million time steps, demonstrating that deep learning can learn discriminative patterns directly from binary content without hand-crafted features. Building on this direction, Fratantonio et al.~\cite{fratantonio2024magika} presented Magika, a lightweight deep learning model achieving 99\% average F1 score across 113 content types while requiring only 1MB of memory and 5ms inference time per file. Magika has been deployed at scale for Gmail attachment scanning and VirusTotal malware analysis, processing hundreds of billions of files weekly. While neural approaches offer superior accuracy, they incur computational overhead that creates tension between accuracy and throughput in high-volume pipelines.
+
+%Magika has been deployed at scale for Gmail attachment scanning and VirusTotal malware analysis, processing hundreds of billions of files weekly.
+
+
+\begin{comment}
+\subsection{File Type Identification}
+
+Accurate file type classification is essential for routing heterogeneous data to appropriate processing pipelines.
+
+\textbf{Magic Number Detection.} The traditional approach relies on ``magic bytes'', which are characteristic byte patterns that appear at known file offsets. McDaniel and Heydari~\cite{mcdaniel2003content} systematically evaluated content-based file type detection algorithms, including byte frequency analysis and header/trailer matching, reporting accuracy ranging from 23\% to 96\% depending on the algorithm and file type. Li et al.~\cite{li2005fileprints} introduced the concept of file ``fingerprints'' using n-gram analysis, achieving improved robustness over simple signature matching. Modern implementations such as libmagic maintain over 5,000 signatures, while Apache Tika extends this with container-aware detection that examines the internal structure of archive formats. These tools achieve 95--100\% accuracy on well-formed files with standard headers~\cite{gopal2011statistical}.
+
+\textbf{Limitations of Signature-Based Methods.} Despite their efficiency, signature-based methods struggle with several scenarios common in web-crawled data~\cite{karampidis2017file}. Gopal and Yang~\cite{gopal2011statistical} demonstrated that commercial off-the-shelf (COTS) solutions fail catastrophically on damaged files, and some cannot identify corrupted files at all. Key limitations include: (1) corrupted headers from incomplete downloads, (2) missing or misleading file extensions, (3) text-based formats (JSON, CSV, plain text) that lack distinctive signatures, and (4) polyglot files that are valid under multiple formats. 
+%Karampidis and Papadourakis~\cite{karampidis2017file} provided a comprehensive literature review confirming these challenges in digital forensics contexts.
+
+\textbf{Machine Learning Approaches.} 
+To address these limitations, researchers have explored statistical and neural approaches to content-based file type detection. Raff et al.~\cite{raff2017malware} introduced MalConv, a convolutional neural network that processes raw byte sequences of up to two million time steps, demonstrating that deep learning can effectively learn discriminative patterns directly from binary content without hand-crafted features. Building on this direction, Fratantonio et al.~\cite{fratantonio2024magika} recently presented Magika, a lightweight deep learning model that achieves 99\% average F1 score across 113 content types while requiring only 1MB of memory and 5ms inference time per file, making it practical for large-scale deployment. Magika has been adopted by Gmail for attachment scanning and integrated with VirusTotal for malware analysis, processing hundreds of billions of files weekly. While neural approaches offer superior accuracy, they incur computational overhead that creates tension between accuracy and throughput in high-volume pipelines.
+\end{comment}
+
+%%%%%%%%%%%%
+%%%%%%%%%%%%
+
+
+
+\subsection{Summary and Positioning}
+
+Table~\ref{tab:comparison} summarizes the key differences between MMdedup and representative prior works across three dimensions: input handling, deduplication capabilities, and pipeline integration.
+As shown in the table, existing deduplication methods operate on pre-sorted, single-modality inputs, while file type detection tools function as standalone utilities without deduplication capabilities. MMdedup bridges these gaps by providing an end-to-end solution that (1) accepts raw heterogeneous inputs without manual preprocessing, (2) integrates lightweight file classification with modality-specific deduplication for text, image, and audio, and (3) offers configurable thresholds to balance deduplication aggressiveness against downstream task performance. Rather than proposing novel algorithms for individual components, our contribution lies in their systematic integration and empirical validation as a cohesive framework for preparing multimodal training data at scale.
+
+
+
+\section{System Design}
+%\section{The MMdedup Framework}
+\label{sec:design}
+
+
+We present MMdedup, an end-to-end framework that transforms raw, heterogeneous web-crawled data into high-quality, deduplicated, modality-specific corpora for machine learning. As depicted in Figure~\ref{fig:system}, MMdedup follows a Classification-and-Clean architecture comprising two phases. In Phase~1, a lightweight content-aware classifier, the Sorter, ingests the unstructured corpus and routes each file into one of three modality streams (text, image, or audio) through content inspection rather than unreliable file extensions. In Phase~2, each stream passes through a two-pass deduplication pipeline: a universal exact deduplication pass removes bit-for-bit identical copies, after which a near-deduplication pass employs modality-specific algorithms to detect semantically or structurally equivalent files that differ at the byte level.
+
+
+%% ========================================================================
+\subsection{Design Rationale}
+%% ========================================================================
+
+MMdedup is guided by a pragmatic design philosophy that trades extreme semantic granularity for the high throughput demanded by petabyte-scale ingestion. Deep cross-modal alignment, exemplified by SyntheClean's~\cite{chen2025syntheclean} adaptive latent-space fusion, offers appealing semantic precision, yet its iterative cost is prohibitive for the initial processing of a raw web crawl. Our lightweight-first stance draws support from high-throughput designs such as LogLite~\cite{tang2025loglite}, which show that deterministic statistical features suffice for robust data routing without the overhead of deep learning classifiers at the ingestion stage.
+
+From this principle emerges a hybrid-depth strategy that matches algorithmic sophistication to the dominant redundancy type in each modality. Image duplicates are frequently semantic, meaning different photographs of the same object under varying conditions, and therefore warrant the cost of a deep embedding model (CLIP~\cite{radford2021learning}). Text and audio redundancy, by contrast, is predominantly syntactic or acoustic, such as boilerplate paragraphs, mirrored articles, or identical recordings re-encoded at different bitrates. For these modalities, computationally lightweight methods, namely multi-granularity N-gram matching and spectral fingerprinting respectively, deliver high recall at a fraction of the cost. This stratified design positions MMdedup as a scalable first-pass filter that eliminates the bulk of low-level duplicates while preserving the option for deeper semantic cleaning in subsequent stages.
+
+
+%% ========================================================================
+\subsection{Phase~1: Content-Aware Classification}
+%% ========================================================================
+
+The Sorter implements a multi-layer, mixed-heuristic classification strategy that cascades from coarse binary signatures to fine-grained content-driven parsing. Its design targets the adversarial conditions endemic to web-scraped corpora: missing or incorrect file extensions, nested containers, encoding anomalies, and truncated files.
+
+\textbf{Stage 1: content-based checks.}
+Classification begins with magic number sniffing, which inspects the leading bytes of each file against a signature table of common binary formats. Files that match a known signature are immediately routed to the corresponding modality stream. Concurrently, a printability analysis is applied: the ratio $r = |B_p| / N$ of printable bytes $B_p$ to the total byte count $N$ is computed and compared against a threshold $\tau_1$. Files with $r \geq \tau_1$ are classified as text candidates; those with $r < \tau_1$ are classified as binary. Files that remain ambiguous after this stage proceed to Stage 2.
+
+\textbf{Stage~2: semantic parsing.}
+Ambiguous files undergo structural pattern matching, in which a content sample is inspected for recognizable formatting cues. As a final safeguard, fault-tolerant reading handles files with encoding anomalies or truncation by designating them as ``unknown'' rather than terminating with an error, ensuring pipeline continuity. 
+
+This hierarchical strategy yields significant advantages. It ensures robustness by reliably handling adverse conditions such as missing/incorrect file extensions, nested containers, or empty files. Crucially, it achieves an accuracy approaching that of machine learning models while maintaining the high throughput of a rule-based system. This design also preserves an extensible interface for the future integration of more complex detectors.
+
+\begin{table}[t]
+\caption{Notation summary}
+\label{tab:notation}
+\centering
+\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.2}
+
+\begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{1.25cm}|>{\centering\arraybackslash}p{1.7cm}|>{\raggedright\arraybackslash}X|}
+\hline
+\textbf{Scope} & \textbf{Symbol} & \textbf{Description} \\
+\hline\hline
+
+\multirow{5}{*}{\textbf{Text}}
+& $\mathcal{D}$          & Input text corpus $\{d_1, \dots, d_n\}$ \\
+\cline{2-3}
+& $k$                    & $n$-gram size (default: 3) \\
+\cline{2-3}
+& $\mathcal{G}_i$        & Fused $n$-gram set of text $d_i$ \\
+\cline{2-3}
+& $S$                    & Comparison window size \\
+\cline{2-3}
+& $\tau$                 & Jaccard threshold (default: 0.8) \\
+\hline
+
+\multirow{5}{*}{\textbf{Image}}
+& $\mathcal{I}$          & Input image set $\{I_1, \dots, I_n\}$ \\
+\cline{2-3}
+& $d$                    & CLIP embedding dimension (512) \\
+\cline{2-3}
+& $k$                    & Number of $k$-means clusters (2{,}000) \\
+\cline{2-3}
+& $\epsilon$             & Distance threshold (default: 0.1) \\
+\cline{2-3}
+& $T_{\text{CLIP}}$      & Per-image CLIP inference cost \\
+\hline
+
+\multirow{5}{*}{\textbf{Audio}}
+& $\mathcal{A}$          & Input audio set $\{a_1, \dots, a_n\}$ \\
+\cline{2-3}
+& $\mathbf{f}_i$         & Binary fingerprint of sample $i$ \\
+\cline{2-3}
+& $b,\, r$               & LSH bands (20) and rows per band (10) \\
+\cline{2-3}
+& $h=b\cdot r$           & MinHash signature length \\
+\cline{2-3}
+& $\tau$                 & Jaccard threshold (default: 0.7) \\
+\hline
+\end{tabularx}
+\end{table}
+
+
+%% ========================================================================
+\subsection{Phase~2: Modality-Specific Deduplication}
+%% ========================================================================
+
+Each classified stream first undergoes exact deduplication: a SHA-256 hash is computed for every file, and files sharing a hash are identified as bit-for-bit duplicates with only one copy retained. This lightweight pass eliminates a substantial fraction of trivially redundant data before the costlier near-deduplication stage. The following subsections describe the near-deduplication algorithm tailored to each modality; key notation is consolidated in Table~\ref{tab:notation}.
+
+%% ------------------------------------------------------------------------
+\subsubsection{Text Near-Deduplication}
+%% -----------------------------------------------------------------------
+
+The integrity of large-scale machine learning (ML) datasets is critically undermined by the widespread presence of near-duplicates. In line with our framework's design rationale of prioritizing computational efficiency for initial bulk cleaning, our text deduplication pipeline focuses on eliminating the most pervasive form of redundancy in web data: syntactic duplicates (e.g., boilerplate, copy-pasted articles). While deep semantic models like SBERT \cite{reimers2019sentencebertsentenceembeddingsusing} can capture paraphrasing, their computational overhead is prohibitive for a first-pass analysis on petabyte-scale corpora \cite{lee2022deduplicating}. Our approach therefore employs a highly efficient multi-granularity N-gram method, which is specifically optimized to achieve maximum throughput while effectively capturing a broad range of syntactic and lexical variations.
+
+%\textbf{Standardization.}
+Each text is preprocessed via case normalization, whitespace consolidation, removal of non-alphanumeric characters (preserving both CJK and Latin scripts), and whitespace trimming, ensuring that surface-level formatting artifacts do not bias downstream feature extraction.
+
+%\textbf{Multi-granularity N-gram extraction.}
+We extract two complementary sets of trigrams ($k{=}3$). Character-level trigrams, produced by a sliding window over the normalized string, capture fine-grained orthographic and morphological patterns. Word-level trigrams, generated after tokenization, preserve phrase-level structure and word order. Their set union forms a composite feature set $\mathcal{G}_i$ per text $d_i$, offering richer discriminative power than either granularity in isolation.
+
+%\textbf{Hierarchical filtering.}
+Exhaustive pairwise comparison is infeasible at scale; we therefore employ a three-tier filtering mechanism. (i)~A length pre-filter discards pairs whose text lengths differ by more than 50\%. (ii)~A sliding-window comparison limits each incoming text to the most recent $S$ retained texts, with $S$ set proportional to $\log n$, reducing amortized complexity from $O(n^2)$ to $O(n \log n)$. (iii)~Surviving pairs are scored by the Jaccard coefficient over their fused N-gram sets:
+\begin{equation}\label{eq:jaccard_text}
+    \mathrm{sim}(d_i, d_j) = \frac{|\mathcal{G}_i \cap \mathcal{G}_j|}{|\mathcal{G}_i \cup \mathcal{G}_j|}\,,
+\end{equation}
+and pairs exceeding a threshold $\tau = 0.8$ (selected via grid search) are classified as near-duplicates, with one copy retained at random.
+
+
+\begin{algorithm}[t]
+\caption{Multi-Granularity N-gram Text Deduplication}
+\label{alg:text_dedup}
+\KwIn{Text corpus $\mathcal{D} = \{d_1, \dots, d_n\}$, N-gram size $k$, threshold $\tau$, window size $S$}
+\KwOut{Deduplicated corpus $\mathcal{D}'$}
+
+$\mathcal{D}' \leftarrow \emptyset$\;
+$\mathcal{K} \leftarrow \emptyset$ \tcp*{retained N-gram sets}
+
+\For{$i \leftarrow 1$ \KwTo $n$}{
+    $t \leftarrow \textsc{Normalize}(d_i)$\;
+    $\mathcal{G}_i \leftarrow \textsc{CharNgrams}(t, k) \cup \textsc{WordNgrams}(t, k)$\;
+    $dup \leftarrow \textsc{False}$\;
+
+    \ForEach{$\mathcal{G}_j \in \mathcal{K}[\max(0,|\mathcal{K}|-S):]$}{
+        \If{$\dfrac{|\mathcal{G}_i \cap \mathcal{G}_j|}{|\mathcal{G}_i \cup \mathcal{G}_j|} \ge \tau$}{
+            $dup \leftarrow \textsc{True}$\;
+            \textbf{break}\;
+        }
+    }
+
+    \If{\textbf{not} $dup$}{
+        $\mathcal{D}' \leftarrow \mathcal{D}' \cup \{d_i\}$\;
+        $\mathcal{K} \leftarrow \mathcal{K} \cup \{\mathcal{G}_i\}$\;
+    }
+}
+
+\Return{$\mathcal{D}'$}
+\end{algorithm}
+
+
+%\textbf{Cross-partition deduplication.}
+To prevent data leakage, we enforce a retention priority of train $\rightarrow$ test $\rightarrow$ validation when deduplication spans dataset splits, guaranteeing partition independence for reliable model evaluation. The complete procedure is formalized in Algorithm~\ref{alg:text_dedup}, which integrates the above stages into a single streaming pass over the corpus. The time complexity of Algorithm~\ref{alg:text_dedup} is $O(n \cdot S \cdot m)$, where $m$ is the average N-gram set size. Setting $S \propto \log n$ yields $O(n\,m\,\log n)$, markedly better than the $O(n^2 m)$ cost of brute-force comparison. Space consumption is $O(n \cdot m)$, dominated by the retained N-gram sets. The approach is theoretically grounded in two properties: the Jaccard index normalizes for length variation, keeping comparisons meaningful across documents of disparate size; and the multi-granularity feature space provides resilience to synonym substitution, minor reordering, and superficial formatting changes.
+
+
+%% ------------------------------------------------------------------------
+\subsubsection{Image Near-Deduplication}
+%% ------------------------------------------------------------------------
+
+Pixel-level methods such as perceptual hashing~\cite{jain2023deep} are brittle under geometric transforms, color shifts, and compression artifacts. To detect semantic near-duplicates, meaning images depicting the same subject under different conditions, we leverage deep visual embeddings.
+Recent work on cross-modal noise filtering~\cite{chen2025syntheclean} corroborates the effectiveness of latent-space geometry for data quality control; our pipeline builds on this insight by coupling CLIP-based embedding with a divide-and-conquer clustering strategy that renders pairwise comparison tractable at scale.
+
+%\textbf{Feature extraction.}
+Each image is resized to $256 \times 256$, center-cropped to $224 \times 224$, and passed through the CLIP-ViT-B-16 encoder~\cite{radford2021learning}, yielding a 512-dimensional embedding that is L2-normalized to unit length for cosine similarity computation. GPU-accelerated batch inference enables processing at web scale.
+
+%\textbf{Clustering.}
+We partition the embedding space into $k{=}2{,}000$ clusters via GPU-accelerated spherical $k$-means~\cite{dhillon2001concept} implemented in Faiss~\cite{douze2017faiss}, using the cosine distance metric, 100 iterations, and a fixed random seed for reproducibility. Each resulting cluster groups semantically related images, decomposing the global deduplication problem into a set of smaller, independent sub-problems.
+
+%\textbf{Intra-cluster deduplication.}
+Within each cluster $\mathcal{C}_j$, we compute the upper-triangular pairwise cosine similarity matrix and, for each image $I_i$, record its maximum similarity score $M_i = \max_{l \in \mathcal{C}_j,\, l \neq i}\, \mathbf{e}_i^\top \mathbf{e}_l$. An image is removed as a near-duplicate when $M_i > 1 - \epsilon$, with the distance threshold $\epsilon = 0.1$ (i.e., similarity $> 0.9$) chosen via grid search to balance precision and recall. Algorithm~\ref{alg:image_dedup} formalizes this three-stage pipeline of embedding, clustering, and intra-cluster filtering.
+
+\begin{algorithm}[t]
+\caption{Semantic Image Deduplication}
+\label{alg:image_dedup}
+\KwIn{Image set $\mathcal{I} = \{I_1, \dots, I_n\}$, cluster count $k$, distance thresholds $\mathcal{E} = \{\epsilon_1, \dots, \epsilon_m\}$}
+\KwOut{Deduplicated sets $\{\mathcal{I}'_{\epsilon_1}, \dots, \mathcal{I}'_{\epsilon_m}\}$}
+
+\For{$i \leftarrow 1$ \KwTo $n$}{
+    $\mathbf{e}_i \leftarrow \textsc{L2Norm}(\textsc{CLIP}(I_i))$\;
+}
+
+$\{\mathcal{C}_1, \dots, \mathcal{C}_k\} \leftarrow 
+\textsc{SphericalKMeans}(\{\mathbf{e}_i\}_{i=1}^{n}, k)$\;
+
+\ForEach{$\epsilon \in \mathcal{E}$}{
+    $\mathcal{I}'_\epsilon \leftarrow \emptyset$\;
+
+    \For{$j \leftarrow 1$ \KwTo $k$}{
+        \ForEach{$i \in \mathcal{C}_j$}{
+            \If{$\max\limits_{l \in \mathcal{C}_j,\, l \neq i}
+            \mathbf{e}_i^\top \mathbf{e}_l \le 1 - \epsilon$}{
+                $\mathcal{I}'_\epsilon \leftarrow 
+                \mathcal{I}'_\epsilon \cup \{I_i\}$\;
+            }
+        }
+    }
+}
+
+\Return{$\{\mathcal{I}'_{\epsilon_1}, \dots, \mathcal{I}'_{\epsilon_m}\}$}
+\end{algorithm}
+
+
+%\textbf{Complexity.}
+The divide-and-conquer design of Algorithm~\ref{alg:image_dedup} yields substantial savings. Feature extraction costs $O(n \cdot T_{\text{CLIP}})$; clustering, $O(n \cdot k \cdot n_{\text{iter}} \cdot d)$; and intra-cluster comparison, $\sum_j O(|\mathcal{C}_j|^2) \approx O(n^2/k)$ for balanced clusters. Setting $k \approx \sqrt{n}$ yields an overall $O(n^{3/2})$ bound, a significant reduction from the $O(n^2)$ baseline. In practice, deduplicating 100K images on an NVIDIA RTX~3090 completes in 2-3 hours, representing a two-order-of-magnitude speedup over exhaustive comparison.
+
+
+%% ------------------------------------------------------------------------
+\subsubsection{Audio Near-Deduplication}
+%% ------------------------------------------------------------------------
+
+The predominant form of audio redundancy in web crawls consists of acoustically identical or near-identical recordings that differ only in noise floor, encoding format, or amplitude normalization. Semantic embedding models such as VGGish~\cite{hershey2017cnnarchitectureslargescaleaudio} and YAMNet~\cite{s24072106} can relate recordings of similar events (e.g., two distinct dog barks), yet their computational cost is excessive for the high-throughput removal of direct acoustic duplicates. We instead cast the problem as binary vector similarity matching and solve it through a three-phase pipeline of spectral fingerprinting, locality-sensitive hashing, and verification.
+
+%\textbf{Spectral fingerprint generation.}
+Each audio signal is transformed into the time-frequency domain via the short-time Fourier transform (STFT)~\cite{zhang2015sift} with a Hanning window ($n_{\text{fft}}{=}2048$, hop length${=}64$), implemented with the Librosa library. The magnitude spectrogram is converted to a logarithmic scale to compress dynamic range and amplify weak spectral components. An adaptive binarization step then produces a noise-resilient representation: each time-frequency bin is set to~1 if its log-magnitude exceeds a locally computed Otsu threshold by 6\,dB, and to~0 otherwise. To ensure dimensional consistency across recordings of varying length, the binary spectrogram is resampled to a canonical $32 \times 128$ grid and flattened into a 4,096-dimensional binary fingerprint vector~$\mathbf{f}_i$.
+
+
+%\textbf{LSH-based candidate retrieval.}
+We apply MinHash-based~\cite{broder1997resemblance} locality-sensitive hashing (LSH)~\cite{datar2004lsh} to avoid exhaustive pairwise comparison. Each fingerprint is compressed into a MinHash signature of length $h = b \times r$ via random permutations. The signature matrix is partitioned into $b$ bands of $r$ rows; fingerprints that collide in any band form candidate near-duplicate pairs.
+
+%\textbf{Verification.}
+Every candidate pair is verified by computing the Jaccard similarity~\cite{leskovec2014miningjaccard} on the original fingerprint vectors:
+\vspace{-1mm}
+\begin{equation}\label{eq:jaccard_audio}
+    J(\mathbf{f}_i,\, \mathbf{f}_j) = \frac{|\mathbf{f}_i \cap \mathbf{f}_j|}{|\mathbf{f}_i \cup \mathbf{f}_j|}\,.
+\end{equation}
+\vspace{-1mm}
+Pairs satisfying $J \geq \tau = 0.7$ are deemed near-duplicates; one member of each pair is removed at random. The full procedure is given in Algorithm~\ref{alg:audio_dedup}.
+Algorithm~\ref{alg:audio_dedup} achieves $O(n \log n)$ time and $O(nh)$ space. The LSH framework provides a probabilistic detection guarantee: for a pair with true similarity~$s$, the collision probability is $1 - (1 - s^r)^b$, and tuning $b$ and $r$ offers direct control over the recall--precision trade-off.
+The pipeline is resilient along three axes: (i)~adaptive binarization with the 6\,dB offset mitigates additive noise; (ii)~log-scale transformation and thresholding absorb amplitude variations; and (iii)~the overlapping STFT window design tolerates minor temporal shifts.
+
+\begin{algorithm}[t]
+\caption{Audio Deduplication}
+\label{alg:audio_dedup}
+\KwIn{Audio set $\mathcal{A} = \{a_1, \dots, a_n\}$, threshold $\tau{=}0.7$, bands $b{=}20$, rows $r{=}10$}
+\KwOut{Deduplicated set $\mathcal{A}'$}
+
+\tcp{Phase 1: fingerprint generation}
+\For{$i \leftarrow 1$ \KwTo $n$}{
+    $y \leftarrow \textsc{Load}(a_i)$\;
+    $D \leftarrow \textsc{STFT}(y)$\;
+    $L \leftarrow 20 \log_{10}(|D|)$\;
+    $\theta \leftarrow \textsc{Otsu}(L) + 6$\;
+    $\mathbf{f}_i \leftarrow 
+    \textsc{Flatten}(\textsc{Resize}(L > \theta,\; 32 \times 128))$\;
+}
+
+\tcp{Phase 2: LSH candidate retrieval}
+$\text{Sig} \leftarrow 
+\textsc{MinHash}([\mathbf{f}_1, \dots, \mathbf{f}_n]^\top,\; b \cdot r)$\;
+$\text{Cand} \leftarrow 
+\textsc{BandCollisions}(\text{Sig},\; b,\; r)$\;
+
+$R \leftarrow \emptyset$\tcp*{Phase 3: verification}
+\ForEach{$(i, j) \in \text{Cand}$}{
+    \If{$\dfrac{|\mathbf{f}_i \cap \mathbf{f}_j|}
+             {|\mathbf{f}_i \cup \mathbf{f}_j|} \ge \tau$}{
+        $R \leftarrow R \cup \{\textsc{RandDrop}(i, j)\}$\;
+    }
+}
+
+\Return{$\mathcal{A} \setminus R$}
+\end{algorithm}
+
+
+
+
+
+
+
+%% ========================================================================
+%% Consolidated notation table
+%% ========================================================================
+
+
+
+
+
+
+
+\begin{comment}
+\section{MMdedup Design}
+
+\begin{figure*}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{figures/figure1.pdf}
+	\caption{The Classification-and-Clean Framework Architecture}
+	\label{fig:system}
+\end{figure*} 
+
+We introduce \textbf{MMdedup} (Multi-Modality), a novel, end-to-end framework designed to systematically process, Classification, and clean large-scale, \textbf{unstructured and heterogeneous} data collections, such as those derived from web-scraping.
+
+Our methodology is engineered around a strategic \textbf{"Classification-and-Clean"} architecture, as illustrated in Figure~\ref{fig:system}. This architecture is designed to transform raw, chaotic data dumps into high-quality, non-redundant, and modality-specific corpora suitable for downstream machine learning tasks.
+
+The framework executes in two primary stages:
+
+\begin{enumerate}
+    \item \textbf{Stage 1: Automated Classification.} The pipeline is initiated by a lightweight heuristic \textbf{classifier}. This crucial first step ingests the unstructured corpus and sorts the mixed files into distinct, modality-specific subsets (e.g., text, audio, or images). This automated Classification is a critical prerequisite for applying specialized, high-efficiency processing.
+
+    \item \textbf{Stage 2: Modality-Specific Deduplication.} Once sorted, each subset is processed by a specialized two-pass deduplication pipeline. This pipeline first executes a universal \textbf{exact-deduplication} pass to eliminate bit-for-bit identical files. Subsequently, it employs a suite of tailored \textbf{near-deduplication} algorithms, each optimized for the specific statistical properties of its given modality.
+\end{enumerate}
+
+This hierarchical "Classification-and-Clean" approach maximizes both storage reduction and computational efficiency, ensuring the generation of robust, high-quality datasets.
+
+\subsection{Design Rationale: A Pragmatic Approach for the Digital Swamp}
+Our "Classification-and-Clean" architecture is fundamentally guided by a pragmatic design philosophy that balances semantic depth against computational feasibility at the scale of a true "digital swamp." While deep semantic alignment is theoretically ideal—as demonstrated by SyntheClean’s\cite{11047850}  use of adaptive latent space fusion for precise noise reduction—the iterative computational cost is prohibitive for petabyte-scale ingestion.Our 'lightweight-first' philosophy is corroborated by high-throughput system designs like LogLite \cite{loglite}, which prove that deterministic statistical features are sufficient for robust data routing. By avoiding heavy deep learning classifiers at the ingestion stage, we ensure the system remains scalable for petabyte-scale workloads. Therefore, MMdedup adopts a pragmatic 'Classification-and-Clean' strategy: we trade extreme semantic granularity for the high throughput required to process the initial raw crawl, reserving expensive deep cleaning for refined subsets.
+
+Consequently, our framework adopts a \textbf{hybrid-depth strategy}. For images, where redundancy is often semantic (e.g., different photos of the same object), we determined that the higher computational cost of a deep semantic model like CLIP is both necessary and justified. In contrast, a significant portion of redundancy in web-crawled text and audio is syntactic or acoustic in nature (e.g., boilerplate text, mirrored articles, or identical audio files with different encodings). For these modalities, we prioritize computational efficiency and throughput by employing highly optimized, non-semantic methods---multi-granularity N-grams and acoustic fingerprinting, respectively. These techniques serve as a powerful and scalable first-pass filter to eliminate the vast majority of low-level duplicates, paving the way for potential deeper semantic analysis in subsequent, more targeted cleaning stages. This deliberate trade-off is central to MMdedup's design, ensuring it remains a practical and scalable solution for real-world data engineering challenges.
+
+\subsection{Sorter}
+\label{sec:sorter}
+
+This Sorter iteration employs a ``multi-layer mixed heuristic'' approach, transitioning from coarse-grained, extension-dependent rules to a content-driven decision chain. The pipeline executes a cascade of lightweight checks to achieve high throughput.
+
+First, it employs \textbf{magic number sniffing} for the rapid identification of common binary formats (e.g., PNG/GIF, RIFF/WAV) while concurrently using a \textbf{printability threshold} to differentiate text from non-text corpora. Files that remain ambiguous subsequently undergo \textbf{JSON semantic parsing}, where the true modality is inferred via field voting and URL suffix analysis. As a final step, the system applies \textbf{fault-tolerant reading} for files with encoding anomalies or truncation, designating them as ``unknown'' rather than failing.
+
+This hierarchical strategy yields significant advantages. It ensures \textbf{robustness} by reliably handling adverse conditions such as missing/incorrect file extensions, nested containers, or empty files. Crucially, it achieves an \textbf{accuracy (0.985)} approaching that of machine learning models while maintaining the high throughput of a rule-based system, as demonstrated in our Sec~\ref{sec:Classification_performance} analysis. This design also preserves an extensible interface for the future integration of more complex detectors.
+
+\subsection{Image Deduplication}\label{sec:images}
+To handle near-duplications in large-scale image datasets, a multistage deduplication method based on deep semantic embedding is proposed. The subsequent section describes the methodology, technical architecture, and complexity analysis. The pipeline integrates data input, semantic feature extraction, hierarchical clustering, and fine-grained deduplication, thereby ensuring scalability and robustness during deployment.
+
+
+\subsubsection{Proposed Methodology}
+
+\begin{algorithm}[t!]
+\caption{Semantic Image Deduplication via Divide-and-Conquer}
+\label{alg:semantic_image_deduplication}
+\begin{algorithmic}[1]
+\Require Image dataset $\mathcal{I} = \{I_1, \dots, I_n\}$, clusters $k$, thresholds $\mathcal{E} = \{\epsilon_1, \dots, \epsilon_m\}$
+\Ensure Deduplicated datasets $\{\mathcal{I}'_{\epsilon_1}, \dots, \mathcal{I}'_{\epsilon_m}\}$
+
+\State \textbf{// Extract CLIP embeddings}
+\For{$i = 1$ \textbf{to} $n$}
+    \State $\mathbf{e}_i \leftarrow \text{L2-Normalize}(\text{CLIP}(I_i))$
+\EndFor
+
+\State \textbf{// K-means clustering}
+\State $\{\mathcal{C}_1, \dots, \mathcal{C}_k\} \leftarrow \text{K-means}(\{\mathbf{e}_1, \dots, \mathbf{e}_n\}, k)$
+
+\State \textbf{// Intra-cluster deduplication}
+\For{$\epsilon \in \mathcal{E}$}
+    \State $\mathcal{I}'_\epsilon \leftarrow \emptyset$
+    \For{$j = 1$ \textbf{to} $k$}
+        \For{$i \in \mathcal{C}_j$}
+            \State $M_i \leftarrow \max_{l \in \mathcal{C}_j, l \neq i} (\mathbf{e}_i^T \mathbf{e}_l)$
+            
+            \State \text{// Keep if no other item is too similar}
+            \If{$M_i \leq (1 - \epsilon)$}
+                \State $\mathcal{I}'_\epsilon \leftarrow \mathcal{I}'_\epsilon \cup \{I_i\}$
+            \EndIf
+        \EndFor
+    \EndFor
+\EndFor
+
+\State \Return $\{\mathcal{I}'_{\epsilon_1}, \dots, \mathcal{I}'_{\epsilon_m}\}$
+\end{algorithmic}
+\end{algorithm}
+
+
+
+Traditional image deduplication methods, which are reliant on pixel-level features, struggle to capture when confronted with complex transformations and semantic similarities. The present approach overcomes these limitations by leveraging deep semantic embeddings to capture high-level visual relationships, thereby facilitating effective near-duplicate detection in datasets such in large-scale image datasets. In comparison with existing semantic-based methods (e.g., perceptual hashing\cite{jain2023deep} or VGG-based embeddings\cite{Zhang2015CharacterlevelCN}), our framework uses optimized clustering for superior scalability.Furthermore, the validity of leveraging latent space geometry for quality control has been recently corroborated by SyntheClean \cite{11047850}, which demonstrates that optimizing alignment in the multimodal latent space is critical for filtering cross-modal noise. Building on this theoretical foundation, our approach prioritizes semantic consistency over pixel-level exactness."
+
+\textbf{Semantic Feature Extraction}: The CLIP-ViT-B-16 \cite{radford2021learning} model is adopted for the purposes of this study. We use the CLIP-ViT-B-16 model for fine-tuning. Input images undergo preprocessing, including resizing to 256$\times$256 pixels, center-cropping to 224$\times$224, tensor conversion, and normalization.The model extracts 512 dimensional embeddings, which are L2-normalized to ensure numerical stability for cosine similarity computations. GPU acceleration and memory-efficient storage enable processing at web scale.
+
+\textbf{Hierarchical Clustering}:We partition the high-dimensional semantic space using GPU-accelerated k-means clustering, utilising the Faiss library\cite{douze2017faiss}. The space is divided into 2,000 sub-regions, with each sub-region grouping semantically similar images. A spherical k-means variant\cite{dhillon2001concept}, employing the cosine distance metric, is utilised to enable the support for normalised embeddings. The clustering parameters encompass 100 iterations and a fixed random seed, ensuring reproducibility. Faiss's optimizations enhance efficiency for large datasets.
+
+\textbf{Refined Deduplication}: Within each cluster, a pairwise cosine similarity matrix $S$ is computed, where $S[i,j] = \text{normalize}(\text{emb}_i) \cdot \text{normalize}(\text{emb}_j)$. To reduce memory overhead, only the upper-triangular matrix is calculated ($i < j$). For each sample, the maximum similarity score $M[i] = \max(S[i,j], j \neq i)$ is determined, and employs a distance threshold $\epsilon = 0.1$. This value, optimized via grid search, corresponds to a similarity threshold of $1 - \epsilon = 0.9$. Images are retained if their maximum similarity $M_i$ to any other image within their cluster does not exceed this similarity threshold (i.e., $M_i \le 0.9$), effectively balancing false positives and false negatives.
+
+\subsubsection{Algorithmic Complexity and Optimization}
+Traditional pairwise comparison methods incur \( O(n^2) \) time complexity, infeasible for large-scale datasets. Our divide-and-conquer approach reduces complexity: feature extraction requires \( O(n \cdot T_{\text{CLIP}}) \), clustering takes \( O(n \cdot k \cdot n_{\text{iter}} \cdot d) \), and intra-cluster deduplication sums to \( \sum O(|C_i|^2) \approx O(n^2/k) \) for balanced clusters. Setting \( k \approx \sqrt{n} \) yields overall complexity \( O(n^{3/2}) \), a significant improvement. On an RTX 3080 GPU, deduplicating 100,000 images takes 2–3 hours, representing a two-order-of-magnitude speedup over naive methods.
+
+\begin{table}[t!]
+ \caption{Parameter Definitions for Image Deduplication}
+    \centering
+    \begin{tabular}{|l|l|} % 用 |l|l| 
+        \hline 
+        Notation & Semantics \\
+        \hline
+        $n$ & Total number of images. \\
+        \hline
+        $k$ & Number of clusters. \\
+        \hline
+        $d$ & Feature dimension. \\
+        \hline
+        $n_{\text{iter}}$ & Number of clustering iterations. \\
+        \hline
+        $T_{\text{CLIP}}$ & Time for CLIP feature extraction per image. \\
+        \hline
+        $|C_i|$ & Number of samples in cluster \( i \) . \\
+        \hline
+        $\sum$ & Summation over all clusters. \\
+        \hline
+    \end{tabular}
+    \label{tab:parameters}
+\end{table}
+
+% \textbf{Parameter Definitions}\begin{itemize}
+%     \item \( n \): Total number of images 
+%     \item \( k \): Number of clusters
+%     \item \( d \): Feature dimension 
+%     \item \( n_{\text{iter}} \): Number of clustering iterations 
+%     \item \( T_{\text{CLIP}} \): Time for CLIP feature extraction per image 
+%     \item \( |C_i| \): Number of samples in cluster \( i \) 
+%     \item \( \sum \): Summation over all clusters 
+% \end{itemize}
+
+\subsection{Audio Deduplication}
+
+To address the challenge of near-duplicate audio samples, and consistent with our system's emphasis on scalable, high-throughput processing, our methodology targets the most common type of audio redundancy found in web crawls: acoustically identical or near-identical recordings that differ only in noise levels, encoding, or amplitude. While semantic audio embeddings from models like VGGish\cite{hershey2017cnnarchitectureslargescaleaudio} or YAMNet\cite{s24072106} can identify different recordings of similar events (e.g., two different dog barks), our priority is the computationally efficient removal of direct acoustic duplicates at scale. We therefore transform the task into a high-dimensional binary vector similarity matching problem, realized through a robust and highly scalable pipeline integrating spectrogram analysis with Locality-Sensitive Hashing (LSH).
+
+% \subsubsection{Problem Definition and Motivation}
+
+
+\subsubsection{Proposed Methodology}
+
+\begin{algorithm}[t!]
+\caption{Audio Deduplication via Spectral Fingerprinting and LSH}
+\label{alg:audio_deduplication}
+\begin{algorithmic}[1]
+\Require Audio dataset $D_{audio} = \{audio_1, \dots, audio_n\}$, similarity threshold $\tau=0.7$, LSH params $b=20, r=10$
+\Ensure Deduplicated dataset $D_{deduped}$
+
+\State \textbf{// Phase 1: Spectral Fingerprint Generation}
+\For{$i = 1$ \textbf{to} $n$}
+    \State $y, sr \leftarrow \textsc{LoadAudio}(audio_i)$
+    \State $D \leftarrow \textsc{STFT}(y, n\_fft=2048, hop\_length=64)$ 
+    \State $log\_spec \leftarrow 20 \log_{10}(|D|)$ 
+    \State $threshold \leftarrow \textsc{OtsuThreshold}(log\_spec) + 6$
+    \State $binary\_spec \leftarrow log\_spec > threshold$ 
+    \State $fingerprint_i \leftarrow \textsc{Flatten}(\textsc{Resize}(binary\_spec, (32, 128)))$ 
+\EndFor
+
+\State \textbf{// Phase 2: LSH-based Similarity Detection}
+\State $Matrix \leftarrow [fingerprint_1, \dots, fingerprint_n]^T$ \Comment{Create $n \times 4096$ matrix}
+\State $Signatures \leftarrow \textsc{GenerateMinHash}(Matrix, b \times r)$
+\State $HashBuckets \leftarrow \textsc{LSH-Bucketing}(Signatures, b, r)$
+\State $CandidatePairs \leftarrow \textsc{FindCollisions}(HashBuckets)$ \Comment{Get pairs (i, j)}
+
+\State \textbf{// Phase 3: Similarity Verification and Deduplication}
+\State Initialize $RemoveSet \leftarrow \emptyset$
+\For{\textbf{each} $(i, j) \in CandidatePairs$}
+    \State \text{// Verify true similarity using Jaccard on original fingerprints}
+    \State $similarity \leftarrow \frac{|fingerprint_i \cap fingerprint_j|}{|fingerprint_i \cup fingerprint_j|}$ 
+    \If{$similarity \geq \tau$}
+        \State $RemoveSet \leftarrow RemoveSet \cup \{\text{RandomChoice}(i, j)\}$
+    \EndIf
+\EndFor
+
+\State $D_{deduped} \leftarrow D_{audio} \setminus RemoveSet$
+\State \Return $D_{deduped}$
+\end{algorithmic}
+\end{algorithm}
+
+The integrity of audio datasets for large-scale machine learning is frequently compromised by near-duplicate samples, which differ only superficially through variations in ambient noise, signal amplitude, or sampling rate. Conventional deduplication methods, reliant on direct waveform comparison or basic frequency-domain features such as Mel-frequency cepstral coefficients (MFCCs), are fundamentally sensitive to these distortions and thus fail to reliably identify such redundancies. Our methodology overcomes this limitation by employing time-frequency spectrogram analysis in conjunction with locality-sensitive hashing (LSH). This approach is engineered to capture the invariant acoustic essence of a signal, enabling robust near-duplicate detection that is resilient to superficial noise and signal transformations.
+
+\textbf{Time-frequency feature extraction}:We leverage Librosa library for processing. Input audio signals are transformed into the time-frequency domain using the short-time Fourier transform (STFT\cite{zhang2015sift}) with a Hanning window. The resulting complex STFT coefficients are converted into a magnitude spectrogram. Logarithmic transformation is then applied to emphasise weak signals and compress the dynamic range, using the maximum amplitude of the spectrogram as the reference point.
+
+\textbf{Adaptive Binarization and Feature Standardization}
+To generate a noise-resilient and standardized feature representation, we first perform an adaptive binarization on the logarithmic-scale spectrogram of each audio sample. This procedure is designed to suppress ambient noise and other spectral artifacts. Specifically, a time-frequency bin is assigned a value of 1 if its magnitude exceeds a locally computed adaptive threshold by an empirically optimized offset of 6 dB; otherwise, it is set to 0. This step effectively isolates prominent acoustic features from the background. Subsequently, to ensure dimensional consistency across all samples, each binarized spectrogram is normalized to a standard resolution of 32$\times$128 through resampling. The resulting matrix is then flattened into a 4,096-dimensional binary feature vector, creating a uniform input space for subsequent analysis, irrespective of the original audio's duration.
+
+\textbf{Efficient Similarity Retrieval with LSH}: To reduce computational complexity, we employ MinHash-based\cite{broder1997resemblance} LSH\cite{datar2004lsh} for near-duplicate detection:
+
+MinHash Signature Generation: For a feature matrix of \( N \) audio samples with 4,096-dimensional binary vectors, we generate \( h \) hash functions via random permutations, producing a MinHash signature matrix where each signature is the index of the first non-zero element under a permutation.
+
+Band-Based LSH Bucketing: The signature matrix is divided into \( b \) bands, each containing \( r \) rows (\( h = b \times r \)). Samples with identical hash values in a band are grouped as candidate near-duplicate pairs.
+
+Similarity Verification and Deduplication: Candidate pairs are evaluated using Jaccard similarity\cite{leskovec2014miningjaccard}, defined as the ratio of the intersection to the union of their feature vectors. Pairs with similarity \(\geq 0.7\) are deemed near-duplicates, with one sample randomly retained.
+
+
+\subsubsection{Algorithmic Efficiency and Probabilistic Guarantees}
+
+The proposed algorithm is designed for computational efficiency, achieving a time complexity of \( O(n \log n) \), where \( n \) is the number of audio samples. This represents a substantial performance gain over conventional pairwise comparison methods, which scale quadratically at \( O(n^2) \) and are thus computationally prohibitive for large datasets. The corresponding space complexity is \( O(nh) \), determined by the number of hash functions (\( h \)) utilized within the Locality-Sensitive Hashing (LSH) framework.
+
+The theoretical underpinning of our method is the probabilistic guarantee afforded by LSH. For any pair of items with a given similarity \( s \), the probability of them being identified as a near-duplicate candidate is formally expressed as \( 1 - (1 - s^r)^b \). The hyperparameters \( b \) (the number of bands) and \( r \) (the rows per band) are tunable, providing precise control over the sensitivity-specificity trade-off. By carefully calibrating these parameters, our approach can be optimized to ensure high recall of true duplicates while stringently controlling the rate of false positives, thereby maximizing the overall accuracy of the deduplication process.
+
+\textbf{Robustness Analysis}: The framework exhibits robustness to:
+\begin{itemize}
+    \item \textit{Noise}: Adaptive binarization effectively mitigates additive Gaussian noise.
+    \item \textit{Volume Variations}: Logarithmic transformation and thresholding ensure insensitivity to amplitude changes.
+    \item \textit{Temporal Shifts}: The overlapping window design of STFT provides tolerance to time shifts.
+\end{itemize}
+
+\begin{table}[htbp!]
+\caption{Parameter Definitions for Audio Deduplication}
+    \centering
+    \begin{tabular}{|l|l|} % 带竖线的表格格式
+        \hline 
+        Notation & Semantics \\
+        \hline
+        $n$ & Total number of samples\\
+        \hline
+        $y$ & Audio time-domain signal \\
+        \hline
+        $s$ & Sampling rate \\
+        \hline
+        $t$ & Similarity threshold  \\
+        \hline
+        $D$ & Complex spectrum matrix output by STFT  \\
+        \hline
+        $|D|$ & Spectral magnitude matrix  \\
+        \hline
+        $\text{log\_spec}$ & Log magnitude spectrum \\
+        \hline
+        $\theta$ & Adjustment coefficient for adaptive threshold  \\
+        \hline
+        $\text{binary\_spec}$ & Binarized spectrogram  \\
+        \hline
+        $\text{fingerprint}_i$ & Fingerprint vector of the $i$-th audio \\
+        \hline
+        $\text{Matrix}$ & Matrix composed of all fingerprints  \\
+        \hline
+        $b$ & Number of bands in LSH  \\
+        \hline
+        $r$ & Number of rows per band  \\
+        \hline
+        $n_{\text{sign}}$ (or $n = b \cdot r$) & MinHash signature length \\
+        \hline
+        $\text{HashBuckets}$ & Set of buckets obtained after hashing by band \\
+        \hline
+        $\text{CandidatePairs}$ & Set of candidate similar pairs \\
+        \hline
+        $\text{RemoveSet}$ & Set of samples to be removed  \\
+        \hline
+        $\text{similarity}$ & Similarity value between two fingerprints  \\
+        \hline
+    \end{tabular}        
+    \label{tab:parameters}
+\end{table}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%文本
+\subsection{Text Deduplication}
+
+The integrity of large-scale machine learning (ML) datasets is critically undermined by the widespread presence of near-duplicates. In line with our framework's design rationale of prioritizing computational efficiency for initial bulk cleaning, our text deduplication pipeline focuses on eliminating the most pervasive form of redundancy in web data: syntactic duplicates (e.g., boilerplate, copy-pasted articles). While deep semantic models like SBERT \cite{reimers2019sentencebertsentenceembeddingsusing} can capture paraphrasing , their computational overhead is prohibitive for a first-pass analysis on petabyte-scale corpora \cite{lee2022deduplicatingtrainingdatamakes}. Our approach, therefore, employs a highly efficient multi-granularity N-gram method, which is specifically optimized to achieve maximum throughput while effectively capturing a broad range of syntactic and lexical variations.
+
+\subsubsection{Proposed Methodology}
+
+Our deduplication methodology, as formally detailed in Algorithm \ref{alg:multigrade_ngram_deduplication}, is executed through a four-stage pipeline. The process commences with text standardization to normalize the corpus, followed by feature extraction. Subsequently, a hierarchical filtering stage identifies potential duplicate clusters, culminating in a final cross-partition analysis to resolve all redundancies.
+
+\begin{algorithm}[t!]
+\caption{Multi-Granularity N-gram Text Deduplication (Optimized)}
+\label{alg:multigrade_ngram_deduplication}
+\begin{algorithmic}[1]
+\Require Text dataset $\mathcal{D} = \{d_1, \dots, d_n\}$, n-gram size $k$, threshold $\tau$, \textbf{sample size $S$}
+\Ensure Deduplicated dataset $\mathcal{D}'$
+
+\State Initialize $\mathcal{D}' \leftarrow \emptyset$, $\textbf{kept\_sets} \leftarrow \emptyset$ \Comment{Store n-gram sets, not raw text}
+\For{$i = 1$ \textbf{to} $n$}
+    \State $text \leftarrow \textsc{Normalize}(d_i[\text{field}])$
+    \State $is\_duplicate \leftarrow \textsc{False}$
+    
+    \State \textbf{// Multi-granularity n-gram extraction (Innovation)}
+    \State $\mathcal{G}_{char} \leftarrow \{\text{char-}k\text{-grams of } text\}$
+    \State $\mathcal{G}_{word} \leftarrow \{\text{word-}k\text{-grams of } text\}$
+    \State $\mathcal{G}_{current} \leftarrow \mathcal{G}_{char} \cup \mathcal{G}_{word}$
+    
+    \State \textbf{// Sample-based Comparison (The $O(n \cdot S)$ optimization)}
+    \State $start\_idx \leftarrow \max(0, |\textbf{kept\_sets}| - S)$
+    \State $SampleSet \leftarrow \textbf{kept\_sets}[start\_idx : ]$ \Comment{Get most recent S samples}
+    
+    \For{\textbf{each} $\mathcal{G}_{kept} \in SampleSet$}
+        \State \textbf{// Length pre-filtering (Needs text length, omitted for simplicity)}
+        \Comment{Ideally, store length alongside the set}
+        
+        \State \textbf{// Jaccard similarity calculation}
+        \State $sim \leftarrow \frac{|\mathcal{G}_{current} \cap \mathcal{G}_{kept}|}{|\mathcal{G}_{current} \cup \mathcal{G}_{kept}|}$
+        
+        \If{$sim \geq \tau$}
+            \State $is\_duplicate \leftarrow \textsc{True}$; \textbf{break}
+        \EndIf
+    \EndFor
+    
+    \If{\textbf{not} $is\_duplicate$}
+        \State $\mathcal{D}' \leftarrow \mathcal{D}' \cup \{d_i\}$
+        \State $\textbf{kept\_sets} \leftarrow \textbf{kept\_sets} \cup \{\mathcal{G}_{current}\}$ \Comment{Store the set}
+    \EndIf
+\EndFor
+\State \Return $\mathcal{D}'$
+\end{algorithmic}
+\end{algorithm}
+
+\textbf{Text Standardization and Preprocessing}:To ensure analytical consistency and mitigate superficial textual variations, all texts undergo a rigorous preprocessing pipeline. This procedure begins with case normalization to unify character case, followed by the consolidation of redundant whitespace. A subsequent filtering stage systematically removes special characters while preserving the core alphanumeric set, including both Chinese and English characters. Finally, leading and trailing spaces are trimmed from each text. These foundational steps are critical for standardizing the input, ensuring that subsequent feature extraction is robust against formatting artifacts and not skewed by irrelevant surface-level differences.
+
+\textbf{Multi-Granularity N-gram Feature Extraction}:To capture comprehensive syntactic structures, we fuse character-level and word-level n-gram features:
+\begin{itemize}
+    \item \textbf{Character-level n-grams}: A sliding window (size $k=3$) generates 3-grams, capturing spelling patterns and local syntactic structures.
+    \item \textbf{Word-level n-grams}: Post-tokenization, word-level 3-grams preserve phrase structures and word order, sensitive to semantic unit variations.
+    \item \textbf{Feature Fusion}:Character-level and word-level n-grams are combined via set union, providing a richer and more comprehensive feature set compared to single-granularity features.
+\end{itemize}
+
+\textbf{Jaccard Similarity Computation}:Syntactic similarity is measured using the Jaccard coefficient:
+\[
+\text{sim}_{\text{ngram}}(d_i, d_j) = \frac{|\mathcal{G}_i \cap \mathcal{G}_j|}{|\mathcal{G}_i \cup \mathcal{G}_j|}
+\]
+where $\mathcal{G}_i$ and $\mathcal{G}_j$ are the n-gram feature sets of texts $d_i$ and $d_j$. Jaccard's normalization for set size differences ensures robust syntactic comparisons.
+
+\textbf{Hierarchical Filtering and Optimization}:To enhance scalability, we employ a three-tier filtering mechanism:
+\begin{enumerate}
+    \item {Length Pre-filtering}: Texts with length differences exceeding 50\% are deemed non-duplicates, reducing unnecessary computations.
+    \item {Sample-based Comparison}: Each new text is compared with the most recent $S$ retained texts, lowering time complexity from $O(n^2)$ to $O(n \cdot S)$.
+    \item {Threshold Judgment}: Texts with Jaccard similarity $\geq \tau = 0.8$ (optimized via grid search) are classified as near-duplicates, with one randomly retained.
+\end{enumerate}
+
+\textbf{Cross-Partition Deduplication}:To prevent data leakage across training, test, and validation sets, we prioritize retention in the order of train $\rightarrow$ test $\rightarrow$ validation, ensuring dataset independence critical for reliable model evaluation.
+
+
+\subsubsection{Algorithmic Performance and Theoretical Robustness}
+
+The algorithm's computational performance is a key design feature. Its time complexity is formally defined as $O(n \cdot S \cdot m)$, where $n$ represents the number of texts, $S$ the sample size for comparison, and $m$ the average number of n-grams per text. By strategically setting the sample size $S$ to be proportional to $\log(n)$, the complexity is reduced to a computationally favorable $O(n \log n)$. This represents a significant scaling advantage over naive pairwise methods, which exhibit a quadratic $O(n^2)$ complexity. The corresponding space complexity is $O(n \cdot m)$, required for the storage of the n-gram sets.
+
+Beyond its efficiency, the methodology is grounded in a theoretical framework that ensures robustness against common textual variations. At its core, the use of the Jaccard similarity index provides two guarantees. First, it establishes a probabilistic link where a high similarity score ($\text{sim}_{\text{ngram}} \geq \tau$) implies a high likelihood of syntactic equivalence. Second, it inherently confers adaptability to varying text lengths by normalizing the comparison space. This foundation is further strengthened by a multi-granularity N-gram strategy designed for semantic resilience. Character-level n-grams capture fine-grained stylistic and orthographic patterns, while word-level n-grams preserve broader semantic structures. This dual-level analysis renders the approach highly tolerant to linguistic variations such as paraphrasing, synonym substitution, and minor changes in word order. Finally, format invariance is systematically achieved through a standardization pre-processing step, which neutralizes discrepancies originating from different document layouts, ensuring that the analysis remains focused on content rather than presentation.
+\begin{table}[t!]
+        \caption{Parameter Definitions for Text Deduplication}    
+    \begin{tabular}{|l|l|} 
+        \hline 
+        Notation & Semantics \\
+        \hline
+        \( D \) & Original text collection \(\{d_1, d_2, \ldots, d_n\}\) \\
+        \hline
+        \( n \) & Total dataset entries \\
+        \hline
+        \( d_i \) & \( i \)-th text in \( D \) \\
+        \hline
+        $\text{text}$ & Current processed text (pre-normalized) \\
+        \hline
+        $\text{NORMALIZE}(\text{text})$ & Text normalization  \\
+        \hline
+        $k$ & $n$-gram size \\
+        \hline
+        $\text{get\_ngrams}(\text{text}, k)$ & Extract $n$-grams; returns set \\
+        \hline
+        $G_{\text{current}}$ & Current text's $n$-gram set \\
+        \hline
+        $G_{\text{kept}}$ & Retained text's $n$-gram set (for comparison) \\
+        \hline
+        $\text{kept\_texts}$ & Retained texts (post-deduplication) \\
+        \hline
+        $\text{kept\_indices}$ & Retained entry indices (current batch) \\
+        \hline
+        $\text{seen\_ngram\_sets}$ & Saved $n$-gram sets of retained texts \\
+        \hline
+        $\text{seen\_text\_hashes}$ & Hashes of seen texts  \\
+        \hline
+        $\text{sample\_size}$ & Max recent retained texts for comparison \\
+        \hline
+        $\text{start\_idx}$ & Comparison start index  \\
+        \hline
+        $\text{is\_duplicate}$ & Flag: current text is duplicate \\
+        \hline
+        $\text{threshold}$ (or \( t \)) & Jaccard similarity threshold for duplicate \\
+        \hline
+        $\text{intersection}$ & $n$-gram set intersection size \\
+        \hline
+        $\text{union}$ & $n$-gram set union size \\
+        \hline
+        $\text{similarity}$ & Jaccard similarity (\(\text{intersection}/\text{union}\)) \\
+        \hline
+        $\text{chunk\_size}$ & Texts per batch \\
+        \hline
+        $\text{chunk}$ & Current text subset \\
+        \hline
+        $\text{deduplicated\_chunk}$ & Chunk post-deduplication \\
+        \hline
+        $\text{all\_kept\_indices}$ & Global retained indices (for final dataset) \\
+        \hline
+        $\text{final\_dataset}$ & Final deduplicated dataset \\
+        \hline
+        $\text{processing\_time}$ & Processing duration (seconds) \\
+        \hline
+        $\text{speed}$ & Processing rate (\(\text{count}/\text{time}\)) \\
+        \hline
+        $\text{retention\_rate}$ & Retention ratio (\(\text{kept}/\text{processed}\)) \\
+        \hline
+    \end{tabular}
+    \label{tab:text_deduplication_parameters}
+\end{table}
+\end{comment}
+
+\section{Experimental Setup}
+\label{sec:setup}
+
+We evaluate MMdedup through comprehensive experiments designed to answer four research questions: (RQ1) How accurately can the Sorter classify mixed-modality files? (RQ2) How does each modality-specific deduplication module compare against existing methods? (RQ3) How do similarity thresholds affect deduplication rates and downstream task performance? (RQ4) What is the contribution of each component to the overall system?
+
+\subsection{Datasets}
+
+We construct five datasets to evaluate different aspects of MMdedup, as summarized in Table~\ref{tab:datasets}.
+
+\begin{table}[t]
+\caption{Summary of evaluation datasets.}
+\label{tab:datasets}
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{L{2.4cm} L{1cm} L{0.8cm} L{0.7cm} L{2.3cm}}
+\toprule
+\textbf{Dataset} & \textbf{Modality} & \textbf{Size} & \textbf{Files} & \textbf{Ground Truth} \\
+\midrule
+Mixed-Challenge   & Mixed & --      & 12K        & Classification labels \\
+ImageNet-Expanded & Image & 450GB   & $\sim$3.8M & 66\% duplicates \\
+ESC-Expanded      & Audio & 20GB    & $\sim$66K  & 80\% duplicates \\
+Amazon-Expanded   & Text  & 500GB   & --         & 80\% duplicates \\
+Mixed-Test        & Mixed & 2.5GB   & 17.6K      & Per-modality labels \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+To stress-test file classification, we create the Mixed-Challenge dataset of 12{,}000 files with deliberately adversarial characteristics, including misleading extensions (e.g., JPEG images named with a \texttt{.txt} suffix), JSON-wrapped modality references containing \texttt{image\_url} or \texttt{audio\_path} fields, and ambiguous binary content. For ablation studies, we construct a separate mixed-modality set, Mixed-Test (17{,}579 files, 2.5\,GB), containing 7{,}800 images, 4{,}365 audio files, 3{,}340 text documents, and 2{,}074 unknown-type files, each subset seeded with controlled duplicates.
+
+The three deduplication benchmarks are built by augmenting established datasets with known ground-truth duplicates. We expand ImageNet-1K~\cite{russakovsky2015imagenet} from 150\,GB to 450\,GB (ImageNet-Expanded) by generating three variants per source image: an exact binary copy, a transcoded PNG with compression artifacts, and a geometrically transformed JPEG with random rotation ($\pm15^{\circ}$) and scaling ($0.8$--$1.2\times$), yielding approximately 66\% duplicates of varying difficulty. For audio and text, we adopt a shared expansion protocol of 80\% exact copies and 20\% modality-appropriate near-duplicates: ESC-50~\cite{piczak2015esc} is extended from 600\,MB to 20\,GB (ESC-Expanded) with white-noise injection (SNR 20--40\,dB) and temporal cropping (5--15\% of duration), while the Amazon Product Reviews dataset~\cite{ni2019justifying} is scaled from 1.6\,GB to 500\,GB (Amazon-Expanded) with appended random byte sequences (8--32 bytes) that alter file hashes while preserving text content.
+
+\begin{comment}
+We construct five datasets to evaluate different aspects of MMdedup, as summarized in Table~\ref{tab:datasets}.
+
+\begin{table}[t]
+\caption{Summary of evaluation datasets.}
+\label{tab:datasets}
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{L{2.4cm} L{1cm} L{0.8cm} L{0.7cm} L{2.3cm}}
+\toprule
+\textbf{Dataset} & \textbf{Modality} & \textbf{Size} & \textbf{Files} & \textbf{Ground Truth} \\
+\midrule
+Mixed-Challenge   & Mixed & --      & 12K        & Classification labels \\
+ImageNet-Expanded & Image & 450GB   & $\sim$3.8M & 66\% duplicates \\
+ESC-Expanded      & Audio & 20GB    & $\sim$66K  & 80\% duplicates \\
+Amazon-Expanded   & Text  & 500GB   & --         & 80\% duplicates \\
+Mixed-Test        & Mixed & 2.5GB   & 17.6K      & Per-modality labels \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Mixed-Challenge.} To stress-test file classification, we create a synthetic dataset of 12,000 files with deliberately adversarial characteristics. The dataset contains files with misleading extensions (e.g., JPEG images named with \texttt{.txt} suffix), JSON-wrapped modality references (e.g., metadata files containing \texttt{image\_url} or \texttt{audio\_path} fields), and ambiguous binary content. This design evaluates the Sorter's robustness against real-world data quality issues commonly found in web crawls.
+
+\textbf{ImageNet-Expanded.} We augment ImageNet-1K~\cite{russakovsky2015imagenet} from 150GB to 450GB through controlled duplication to create ground-truth labels for deduplication evaluation. For each source image, we generate three variants: (1) an exact binary copy, (2) a transcoded PNG introducing compression artifacts, and (3) a geometrically transformed JPEG with random rotation ($\pm15°$) and scaling ($0.8$--$1.2\times$). This 3$\times$ expansion creates a mixture where approximately 66\% of images are duplicates of varying difficulty.
+
+\textbf{ESC-Expanded.} We extend ESC-50~\cite{piczak2015esc}, a standard environmental sound classification benchmark, from 600MB to 20GB. The expansion applies 80\% exact duplication and 20\% acoustic perturbations including white noise injection (SNR 20--40dB) and random temporal cropping (removing 5--15\% of duration). These perturbations preserve semantic content while altering binary representations, testing robustness to common audio transformations.
+
+\textbf{Amazon-Expanded.} We scale the Amazon Product Reviews dataset~\cite{ni2019justifying} from 1.6GB to 500GB using a similar strategy. We create 80\% exact copies and 20\% near-duplicates by appending random byte sequences (8--32 bytes) that change file hashes while preserving text content and semantics. This simulates real-world scenarios where identical reviews appear with minor formatting differences.
+
+\textbf{Mixed-Test.} For ablation studies, we construct a mixed-modality dataset of 17,579 files totaling 2.5GB. The dataset contains 7,800 images (JPEG/PNG), 4,365 audio files (WAV, comprising 1.76GB), 3,340 text documents (JSON), and 2,074 files of unknown or ambiguous type for robustness testing. Each modality subset contains controlled duplicates to enable component-wise evaluation.
+\end{comment}
+
+%\vspace{-2mm}
+\subsection{Baselines}
+
+We compare MMdedup against representative methods for each task.
+
+\textbf{File Classification.} We evaluate three baselines: (1) Naive Extension, which classifies files solely by their filename extension; (2) libmagic~\cite{darwin2008libmagic}, the widely-deployed library underlying the Linux \texttt{file} command, which identifies file types through magic number signatures; and (3) the file command itself, representing the standard Unix utility for file type detection.
+
+\textbf{Image Deduplication.} We compare against four methods spanning exact matching to semantic similarity: (1) MD5 Hash, which detects only bit-identical duplicates; (2) pHash~\cite{zauner2010implementation}, a perceptual hashing method based on discrete cosine transform coefficients; (3) SimCLR~\cite{chen2020simple}, which uses contrastive learning embeddings for similarity computation; and (4) SemDeDup~\cite{abbas2023semdedup}, the state-of-the-art semantic deduplication method that clusters images by CLIP embeddings and removes samples closest to cluster centroids.
+
+\textbf{Audio Deduplication.} We compare against: (1) MD5 Hash for exact matching; and (2) MFCC+Cosine, a traditional approach that extracts Mel-frequency cepstral coefficients and computes pairwise cosine similarity.
+
+\textbf{Text Deduplication.} We compare against three methods: (1) MD5 Hash for exact matching; (2) MinHash+LSH~\cite{broder1997resemblance}, the industry-standard method used in large-scale text deduplication pipelines including C4~\cite{raffel2020exploring} and The Pile~\cite{gao2020pile}; and (3) SimHash~\cite{charikar2002similarity}, Google's locality-sensitive hashing scheme for near-duplicate web page detection.
+
+\subsection{Evaluation Metrics}
+
+We evaluate MMdedup across four dimensions: classification quality, deduplication quality, computational efficiency, and downstream task impact.
+
+\textbf{Classification Quality.} To assess the Sorter's ability to correctly route files to modality-specific pipelines, we report two complementary metrics. Accuracy measures the fraction of files assigned to the correct modality category:
+\begin{equation}
+\text{Accuracy} = \frac{|\{f \in \mathcal{F} : \hat{y}_f = y_f\}|}{|\mathcal{F}|}
+\end{equation}
+where $\mathcal{F}$ denotes the set of input files, $y_f$ is the ground-truth modality label, and $\hat{y}_f$ is the predicted label. We also report \emph{Macro F1-score}, which computes the harmonic mean of precision and recall for each class $c \in \mathcal{C}$ and averages across classes:
+\begin{equation}
+\text{Macro F1} = \frac{1}{|\mathcal{C}|} \sum_{c \in \mathcal{C}} \frac{2 \cdot P_c \cdot R_c}{P_c + R_c}
+\end{equation}
+where $P_c = \text{TP}_c / (\text{TP}_c + \text{FP}_c)$ and $R_c = \text{TP}_c / (\text{TP}_c + \text{FN}_c)$ are the per-class precision and recall, respectively. Macro F1 provides a balanced assessment across modalities, preventing dominant classes from masking poor performance on minority classes.
+
+\textbf{Deduplication Quality.} We measure the effectiveness of duplicate removal using three metrics. Deduplication Rate quantifies the fraction of data identified and removed as duplicates:
+\begin{equation}
+\text{Dedup Rate} = \frac{|\mathcal{D}_{\text{removed}}|}{|\mathcal{D}|} \times 100\%
+\end{equation}
+where $\mathcal{D}$ is the original dataset and $\mathcal{D}_{\text{removed}}$ is the set of files marked as duplicates. To assess detection correctness against ground-truth duplicate sets $\mathcal{G}$, we compute Precision and Recall:
+\begin{equation}
+\text{Precision} = \frac{|\mathcal{D}_{\text{removed}} \cap \mathcal{G}|}{|\mathcal{D}_{\text{removed}}|}, \quad
+\text{Recall} = \frac{|\mathcal{D}_{\text{removed}} \cap \mathcal{G}|}{|\mathcal{G}|}
+\end{equation}
+High precision ensures that unique, informative samples are preserved rather than erroneously discarded, while high recall ensures comprehensive removal of redundant content. For datasets without explicit ground-truth labels, we construct $\mathcal{G}$ through our controlled data expansion process, which generates known duplicates with exact and near-duplicate variants.
+
+\textbf{Computational Efficiency.} We report three efficiency metrics to characterize computational costs. Throughput measures processing speed in files per second (for classification) or domain-specific units (images/second for image deduplication). Processing Time reports end-to-end wall-clock time for each pipeline stage. GPU Memory records peak memory consumption during embedding extraction and similarity computation, which determines the feasibility of deployment on resource-constrained hardware.
+
+\textbf{Downstream Task Impact.} To validate that deduplication preserves or improves data utility for model training, we train standard classification models on deduplicated datasets and report test accuracy on held-out evaluation sets.
+\begin{equation}
+\text{Test Acc} = \frac{|\{x \in \mathcal{T} : \hat{y}_x = y_x\}|}{|\mathcal{T}|}
+\end{equation}
+where $\mathcal{T}$ denotes the test set. This metric directly measures whether deduplication harms model generalization (accuracy drop) or improves it (accuracy gain through noise removal). A key insight from our experiments is that aggressive deduplication can actually improve downstream accuracy by eliminating near-duplicates that cause data leakage between training and test splits.
+
+
+\begin{comment}
+\subsection{Evaluation Metrics}
+
+We evaluate system performance across four dimensions. For classification quality, we report Accuracy (fraction of correctly classified files) and Macro F1-score (harmonic mean of precision and recall, averaged across classes), which together assess the Sorter's ability to correctly route files to modality-specific pipelines.
+
+For deduplication quality, we measure Deduplication Rate (percentage of data removed), Precision (fraction of detected duplicates that are true duplicates), and Recall (fraction of true duplicates successfully detected). High precision ensures unique samples are preserved, while high recall ensures comprehensive duplicate removal. We also report Throughput (files or images per second), Processing Time, and GPU Memory consumption for efficiency comparison.
+
+To validate that deduplication preserves data utility, we train standard models on deduplicated datasets and report Test Accuracy on held-out evaluation sets. This metric directly measures whether deduplication harms or improves downstream model generalization.
+\end{comment}
+
+\subsection{Implementation Details}
+
+Deduplication experiments are conducted on a server equipped with an NVIDIA RTX 3090 GPU (24GB VRAM), Intel Xeon Gold 6226R CPU, and 64GB RAM. The Sorter classification benchmark runs on a separate workstation with an Intel Core i5-13490F CPU (10 cores, 20 threads) and 32GB RAM, running Windows 11 Pro with Python 3.11.
+
+We implement MMdedup in Python 3.10 using PyTorch 2.0 for GPU-accelerated computation. Image embeddings are extracted using OpenCLIP's ViT-B/16 model pretrained on LAION-2B~\cite{schuhmann2022laion}, audio processing uses Librosa 0.10 for spectrogram computation, text hashing employs the \texttt{datasketch} library for MinHash signatures, and all similarity searches leverage Faiss~\cite{johnson2019billion} for efficient nearest neighbor retrieval.
+
+Unless otherwise specified, we use the following default hyperparameters: $k = 2000$ clusters and similarity threshold $\epsilon = 0.1$ (cosine similarity $\geq 0.9$) for image deduplication; $b = 20$ bands, $r = 10$ rows, and Jaccard threshold $\tau = 0.7$ for audio deduplication; and 128 hash permutations with Jaccard threshold $\tau = 0.8$ for text deduplication. These values were selected through preliminary experiments on validation splits.
+
+For downstream evaluation, we train ResNet-18~\cite{he2016deep} on ImageNet-Expanded with full fine-tuning, batch size 512, learning rate 0.0001 (Adam), for 2 epochs. On ESC-Expanded, we fine-tune ImageNet-pretrained ResNet-18 on 128-bin mel-spectrograms resized to $224 \times 224$, with batch size 32, learning rate 0.001 (Adam), for 10 epochs using an 80/20 train/test split. For Amazon-Expanded, we employ online learning with HashingVectorizer ($2^{20}$ features) and SGDClassifier trained over 3 epochs; we reserve 20\% of original data as a fixed validation set via deterministic content-based hashing, ensuring fair comparison across methods. All experiments use random seed 42 for reproducibility.
+
+
+\section{Evaluation Results}
+\label{sec:results}
+We present comprehensive experimental results addressing the four research questions outlined in Section~\ref{sec:setup}. We first evaluate the Sorter's classification accuracy (RQ1), then compare each modality-specific deduplication module against existing methods (RQ2), analyze threshold sensitivity and downstream task impact (RQ3), and finally conduct ablation studies to quantify each component's contribution (RQ4).
+
+\subsection{File Classification Performance}
+
+In Table~\ref{tab:sorter}, we present the classification performance on the Mixed-Challenge dataset, which contains 12,000 files with deliberately adversarial characteristics, including extension mismatches and JSON-wrapped modality references.
+
+The Naive Extension baseline achieves only 62.10\% accuracy, failing entirely on files with misleading extensions. More surprisingly, both libmagic and the standard \texttt{file} command achieve even lower accuracy (50.99\%), despite their reliance on binary magic numbers rather than extensions. This degradation occurs because these tools correctly identify JSON-wrapped files as ``text/plain'' based on their file headers, but fail to recognize that these files semantically represent image or audio references through fields such as \texttt{image\_url} or \texttt{audio\_path}.
+
+
+\begin{table}[t]
+\caption{File classification performance comparison.}
+\label{tab:sorter}
+\centering
+\small
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.12}
+\begin{tabular}{|l|c|c|c|c|}
+\hline
+\makecell[c]{\textbf{Method}} &
+\makecell[c]{\textbf{Accuracy} \\ (\%)} &
+\makecell[c]{\textbf{Macro F1}} &
+\makecell[c]{\textbf{Throughput} \\ (K files/s)} &
+\makecell[c]{\textbf{Memory} \\ (MB)} \\
+\hline\hline
+Naive Extension & 62.10 & 0.61 & 14.97 & 2.36 \\
+Libmagic        & 50.99 & 0.49 & 1.35  & 1.82 \\
+File Command  & 50.99 & 0.49 & 1.32  & 1.47 \\
+\hline
+\textbf{Our Sorter} & \textbf{100.00} & \textbf{1.00} & 4.25 & 4.03 \\
+\hline
+\end{tabular}
+\end{table}
+
+
+
+Our Sorter achieves 100\% accuracy and perfect Macro F1 score of 1.0 by employing a multi-layered hybrid heuristic strategy. The key insight is combining traditional magic number detection with JSON payload analysis that examines semantic field patterns. While throughput (4.25 K/s) is lower than the trivial extension-based approach, it is 3.1$\times$ faster than libmagic while providing substantially higher accuracy. The modest memory overhead (4.03 MB vs. 1.47--2.36 MB) is negligible for practical deployments.
+
+\begin{comment}
+\sisetup{
+  detect-weight=true,
+  detect-family=true,
+  round-mode=places,
+  round-precision=2,
+  table-number-alignment=center
+}
+
+\begin{table}[t]
+\caption{File classification performance comparison.}
+\label{tab:sorter}
+\centering
+\small
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.12}
+\begin{tabular}{
+l
+S[table-format=3.2]
+S[table-format=1.2]
+S[table-format=2.2]
+S[table-format=1.2]
+}
+\toprule
+\textbf{Method} &
+{\makecell{\textbf{Accuracy} \\ (\%)}} &
+{\textbf{Macro F1}} &
+{\makecell{\textbf{Throughput} \\ (K files/s)}} &
+{\makecell{\textbf{Memory} \\ (MB)}} \\
+\midrule
+Naive Extension & 62.10 & 0.61 & 14.97 & 2.36 \\
+libmagic        & 50.99 & 0.49 & 1.35  & 1.82 \\
+file command    & 50.99 & 0.49 & 1.32  & 1.47 \\
+\midrule
+\textbf{Our Sorter} & \bfseries 100.00 & \bfseries 1.00 & 4.25 & 4.03 \\
+\bottomrule
+\end{tabular}
+\end{table}
+\end{comment}
+
+\subsection{Deduplication Effectiveness}
+
+We evaluate our modality-specific deduplication modules against established baselines, measuring both deduplication quality (precision, recall) and efficiency (throughput, time).
+
+\subsubsection{Image Deduplication}
+Table~\ref{tab:image_dedup} compares image deduplication methods on ImageNet-Expanded (450GB), which contains approximately 66\% duplicates including exact copies, transcoded variants, and geometric transformations.
+
+\begin{table}[t]
+\caption{Image deduplication performance comparison.}
+\label{tab:image_dedup}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.10}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{|p{1.3cm}|c|c|c|c|c|c|c|}
+\hline
+\makecell[c]{\textbf{Method}} &
+\makecell[c]{\textbf{Dedup}\\(\%)} &
+\makecell[c]{\textbf{Prec}\\(\%)} &
+\makecell[c]{\textbf{Rec}\\(\%)} &
+\makecell[c]{\textbf{TP}\\(img/s)} &
+\makecell[c]{\textbf{GPU}\\(GB)} &
+\makecell[c]{\textbf{Acc}\\(\%)} &
+\makecell[c]{\textbf{Time}\\(h)} \\
+\hline\hline
+No Dedup. & 0.00 & -- & -- & -- & -- & 79.94 & -- \\
+MD5 & 0.30 & 100.00 & 0.00 & 2640.2 & 0 & 80.10 & 6.76 \\
+pHash~\cite{zauner2010implementation} & 60.39 & 100.00 & 99.97 & 356.2 & 0 & 72.26 & 6.33 \\
+\hline
+SimCLR~\cite{chen2020simple} & 69.17 & 18.26 & 99.68 & 45.0 & 21.3 & 67.80 & 11.8 \\
+SemDeDup~\cite{abbas2023semdedup} & 69.21 & 93.70 & 96.20 & 27.9 & 4.0 & 67.86 & 12.0 \\
+\hline
+\textbf{Ours (CLIP)} & \textbf{67.25} & 85.24 & 69.25 & \textbf{101.2} & 4.6 & \textbf{69.58} & 10.5 \\
+\hline
+\end{tabular}%
+}
+\end{table}
+
+MD5 hashing detects only exact binary duplicates, achieving a mere 0.30\% deduplication rate and completely missing the near-duplicates that constitute the majority of redundancy. Perceptual hashing (pHash) achieves high precision (100\%) and recall (99.97\%) but aggressively removes 60.39\% of data, resulting in significant downstream accuracy degradation (72.26\% vs. 79.94\% baseline). This indicates that pHash incorrectly marks semantically distinct images as duplicates based on superficial visual similarity.
+
+Among semantic methods, SimCLR achieves high recall (99.68\%) but extremely low precision (18.26\%), indicating that its embedding space does not adequately separate semantically distinct images. SemDeDup~\cite{abbas2023semdedup} provides better precision (93.70\%) but suffers from low throughput (27.9 imgs/s) due to its computationally intensive clustering approach.
+
+
+Our CLIP-based method achieves the highest downstream test accuracy among semantic deduplication methods (69.58\%), outperforming both SimCLR (67.80\%) and SemDeDup (67.86\%), while maintaining $3.6 \times$ higher throughput than SemDeDup.
+Although our precision (85.24\%) and recall (69.25\%) appear lower than some baselines, the downstream accuracy metric demonstrates that our method optimally balances duplicate removal with information preservation. The key advantage lies in our hierarchical clustering strategy (Algorithm~\ref{alg:image_dedup}), which reduces the $O(n^2)$ pairwise comparison to $O(n^{3/2})$ complexity while preserving semantic coherence within clusters.
+
+\subsubsection{Audio Deduplication}
+
+Table~\ref{tab:audio_dedup} presents results on ESC-Expanded (20GB), containing 80\% exact duplicates and 20\% acoustic perturbations including white noise injection and temporal cropping.
+
+\begin{table}[t]
+\caption{Audio deduplication performance comparison.}
+\label{tab:audio_dedup}
+\centering
+\small
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.1}
+
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+
+\begin{tabular}{|L{2.3cm}|C{1cm}|C{0.9cm}|C{0.9cm}|C{0.9cm}|C{1.1cm}|}
+\hline
+\makecell[c]{\textbf{Method}} &
+\makecell[c]{\textbf{Dedup.} \\ (\%)} &
+\makecell[c]{\textbf{Prec.} \\ (\%)} &
+\makecell[c]{\textbf{Recall} \\ (\%)} &
+\makecell[c]{\textbf{Time} \\ (s)} &
+\makecell[c]{\textbf{Test Acc.} \\ (\%)} \\
+\hline\hline
+No Dedup.     & 0.00  & --     & --     & --  & 99.97$^\dagger$ \\
+MD5           & 69.64 & 100.00 & 87.44  & 228 & 90.37 \\
+MFCC+Cosine \cite{mcfee2015librosa}   & 98.68 & 79.65  & 98.69  & 47  & 50.94 \\
+\hline
+\textbf{Ours (LSH)} & \textbf{77.48} & 90.77 & 88.32 & 86 & \textbf{92.01} \\
+\hline
+\end{tabular}
+\vspace{1mm}
+\raggedright
+\footnotesize
+$^\dagger$ The 99.97\% test accuracy is artificially inflated due to duplicate leakage across the train/test split.
+\end{table}
+
+The No Dedup baseline shows 99.97\% test accuracy, but this metric is misleading: duplicates spanning the train/test split cause severe data leakage, allowing the model to ``memorize'' test samples rather than learn generalizable features. This observation underscores the critical importance of deduplication for reliable model evaluation.
+
+MD5 hashing removes 69.64\% of data (the exact duplicates) with perfect precision, yielding 90.37\% test accuracy after eliminating the leakage effect. However, MD5 misses all acoustically perturbed near-duplicates (recall limited to 87.44\% of ground-truth duplicates).
+
+MFCC with cosine similarity achieves high recall (98.69\%) but over-aggressively removes 98.68\% of the data, leading to a catastrophic drop in accuracy to 50.94\% on the 50-class ESC dataset, barely above random chance, which indicates that traditional audio features lack the robustness to distinguish semantically different sounds that share similar spectral characteristics.
+
+Our spectral fingerprinting approach with LSH achieves the highest downstream accuracy (92.01\%), surpassing even the MD5 baseline by 1.64 percentage points. This improvement occurs because our method successfully removes both exact duplicates and acoustically similar near-duplicates that would otherwise cause subtle data omissions, while preserving semantically distinct samples. The 77.48\% deduplication rate represents an optimal balance, validated by the superior generalization performance.
+
+\subsubsection{Text Deduplication}
+Table~\ref{tab:text_dedup} presents results on Amazon-Expanded (500GB), containing 80\% exact duplicates and 20\% near-duplicates with appended byte noise.
+
+\begin{table}[t]
+\caption{Text deduplication performance comparison.}
+\label{tab:text_dedup}
+\centering
+\small
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.1}
+\begin{tabular}{|l|c|c|c|c|c|}
+\hline
+\makecell[c]{\textbf{Method}} &
+\makecell[c]{\textbf{Dedup.} \\ (\%)} &
+\makecell[c]{\textbf{Prec.} \\ (\%)} &
+\makecell[c]{\textbf{Recall} \\ (\%)} &
+\makecell[c]{\textbf{Time} \\ (h)} &
+\makecell[c]{\textbf{Test Acc.} \\ (\%)} \\
+\hline\hline
+No Dedup. & 0.00 & -- & -- & -- & 83.21 \\
+MD5 & 90.01 & 100.00 & 78.60 & 12.5 & 83.14 \\
+MinHash+LSH~\cite{broder1997resemblance} & 90.03 & 99.95 & 98.75 & 70 & 83.14 \\
+SimHash~\cite{charikar2002similarity} & 7.17 & 50.00 & 0.10 & 120 & 83.22 \\
+\hline
+\textbf{Ours (Multi)} & 90.03 & 99.95 & \textbf{99.05} & \textbf{60} & 83.14 \\
+\hline
+\end{tabular}
+\end{table}
+
+MD5 achieves a 90.01\% deduplication rate by capturing exact duplicates, but it still misses 21.40\% of the ground-truth duplicates, namely near-duplicates with byte noise, resulting in a recall of 78.60\%. SimHash performs poorly on this dataset, reaching only 7.17\% deduplication with 50\% precision, which is effectively random. We attribute this failure to SimHash’s sensitivity to the particular byte-noise perturbations in our dataset, which change the hash values even when the semantic content is preserved.
+
+
+MinHash+LSH~\cite{broder1997resemblance} serves as the industry-standard baseline, achieving 99.95\% precision and 98.75\% recall. Our multi-granularity N-gram method matches this quality (99.95\% precision, 99.05\% recall) while reducing processing time by 14\% (60h vs. 70h). The efficiency gain stems from our sample-based comparison strategy (Algorithm~\ref{alg:text_dedup} ), which limits pairwise comparisons to recent samples rather than the full corpus, reducing complexity from $O(n^2)$ to $O(n \cdot S)$ where $S \ll n$.
+
+All effective deduplication methods (MD5, MinHash, Ours) yield identical downstream accuracy (83.14\%), marginally below the No Dedup baseline (83.21\%). This minimal impact suggests that the Amazon Reviews dataset, even with 90\% redundancy, contains sufficient unique information for model training. The key benefit of deduplication in this case is the 10$\times$ reduction in storage and training time rather than accuracy improvement.
+
+
+\subsection{Threshold Sensitivity Analysis}
+
+We illustrate how deduplication rates vary with the similarity threshold $\tau$ across all three modalities in Figure~\ref{fig:dedup_rate}. The three modalities exhibit distinct sensitivity patterns.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.75\columnwidth]{figures/figure2_dedup_rate.pdf}
+\caption{Deduplication rate as a function of similarity threshold.}
+\label{fig:dedup_rate}
+\vspace{-2mm}
+\end{figure}
+
+
+
+ Image deduplication maintains near-constant rates ($>$97\%) for $\tau \leq 0.6$, then drops sharply: from 81.9\% at $\tau=0.7$ to 48.7\% at $\tau=0.8$ and merely 7.0\% at $\tau=0.9$. This steep transition reflects the semantic clustering structure of ImageNet, where images within the same class share high similarity while cross-class pairs are well-separated.
+
+Audio deduplication shows similar behavior but with the transition occurring at lower thresholds: rates exceed 90\% for $\tau \leq 0.5$, then decline through 47.7\% at $\tau=0.7$ to 0.4\% at $\tau=0.9$. The earlier transition suggests that audio spectral fingerprints exhibit greater intra-class variance than image embeddings.
+
+Text deduplication displays markedly different characteristics, with rates ranging only from 39.5\% at $\tau=0.2$ to 7.6\% at $\tau=0.9$. This compressed range indicates that the N-gram similarity distribution is more uniform, lacking the bimodal structure observed in image and audio modalities. Consequently, text deduplication is relatively insensitive to threshold selection.
+
+\subsection{Impact on Downstream Tasks}
+
+As shown in Figure~\ref{fig:downstream}, we present downstream model performance across different deduplication thresholds, enabling principled threshold selection by balancing data reduction against task performance.
+
+\begin{figure*}[t]
+    \centering
+    \begin{subfigure}[t]{0.32\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/figure3a_image.pdf}
+        \caption{Image modality}
+        \label{fig:downstreama}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.32\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/figure3b_audio.pdf}
+        \caption{Audio modality}
+        \label{fig:downstreamb}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.32\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/figure3c_text.pdf}
+        \caption{Text modality}
+        \label{fig:downstreamc}
+    \end{subfigure}
+    \caption{Downstream task performance as a function of training epochs for different similarity thresholds.}
+    \label{fig:downstream}
+    \vspace{-2mm}
+\end{figure*}
+
+
+For image data (Figure~\ref{fig:downstreama}), aggressive thresholds ($\tau \leq 0.8$) cause severe accuracy degradation, with $\tau=0.5$ yielding only 9\% final accuracy compared to 47.8\% for the undeduped baseline. The conservative threshold $\tau=0.9$ preserves accuracy (47.5\%) while still removing approximately 7\% of duplicates. We therefore recommend $\tau^*=0.9$ for image deduplication, which achieves the optimal balance between storage reduction and performance preservation.
+
+Audio deduplication (Figure~\ref{fig:downstreamb}) reveals a striking result: $\tau=0.7$ consistently \emph{outperforms} the undeduped baseline, achieving 75.6\% accuracy versus 71.2\%. This counterintuitive improvement occurs because our method effectively removes ``harmful'' near-duplicates, namely acoustically similar samples that cause data leakage and prevent the model from learning robust features. More aggressive thresholds ($\tau \leq 0.5$) remove too much data, degrading performance. We recommend $\tau^*=0.7$, which achieves 47.7\% data reduction while improving downstream accuracy.
+
+Text deduplication (Figure~\ref{fig:downstreamc}) shows remarkable insensitivity to threshold selection, with all settings achieving approximately 93--94\% final accuracy, nearly identical to the baseline. This stability allows practitioners to choose thresholds based on storage constraints rather than accuracy concerns. We recommend $\tau^*=0.8$ as a conservative default that achieves approximately 10\% deduplication while matching baseline performance.
+
+
+
+\begin{comment}
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/figure3_combined.png}
+\caption{Downstream task performance as a function of training epochs for different similarity thresholds. }
+\label{fig:downstream}
+\end{figure*}
+\end{comment}
+
+\begin{table}[t]
+\caption{Ablation study on Mixed-Test.}
+\vspace{-2mm}
+\label{tab:ablation}
+\centering
+\footnotesize
+\renewcommand{\arraystretch}{1.2}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{p{2.55cm}cccccc}
+\toprule
+\textbf{Configuration} & \textbf{Image} & \textbf{Audio} & \textbf{Text} & \textbf{Overall} & \textbf{Time} & \textbf{Save} \\
+ & \textbf{(\%)} & \textbf{(\%)} & \textbf{(\%)} & \textbf{(\%)} & \textbf{(m)} & \textbf{(MB)} \\
+\midrule
+Full MMdedup & 48.32 & 39.77 & 47.72 & 46.13 & 17.5 & 950 \\
+w/o Sorter (Image only) & 47.67 & 0.00 & 0.00 & 21.15 & 1.9 & 200 \\
+w/o Sorter (Audio only) & 0.00 & 39.82 & 0.00 & 9.89 & 17.1 & 731 \\
+w/o Sorter (Text only) & 0.00 & 0.00 & 47.72 & 9.07 & 0.3 & 0.5 \\
+w/o Sorter (Ground-truth) & 48.32 & 39.89 & 47.72 & 46.16 & 17.6 & 952 \\
+w/o Near-Dedup & 0.00 & 37.14 & 47.72 & 25.52 & 2.1 & 529 \\
+w/o Image Dedup & -- & 39.40 & 47.72 & 44.44 & 15.9 & 724 \\
+w/o Audio Dedup & 50.19 & -- & 47.72 & 49.05 & 1.9 & 223 \\
+w/o Text Dedup & 47.67 & 39.79 & -- & 44.84 & 17.5 & 931 \\
+\bottomrule
+\end{tabular}
+\vspace{-3mm}
+\end{table}
+
+
+
+\begin{comment}
+\begin{table*}[t]
+\caption{Ablation study on Mixed-Test.}
+\label{tab:ablation}
+\centering
+\small
+\renewcommand{\arraystretch}{1.2}
+\setlength{\tabcolsep}{4.2pt}
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Configuration} & \textbf{Image (\%)} & \textbf{Audio (\%)} & \textbf{Text (\%)} & \textbf{Overall (\%)} & \textbf{Time (m)} & \textbf{Save Space (MB)} \\
+\midrule
+Full MMdedup & 48.32 & 39.77 & 47.72 & 46.13 & 17.5 & 950 \\
+w/o Sorter (Image only) & 47.67 & 0.00 & 0.00 & 21.15 & 1.9 & 200\\
+w/o Sorter (Audio only ) & 0.00 & 39.82 & 0.00 & 9.89 & 17.1 & 731\\
+w/o Sorter (Text only ) & 0.00 & 0.00 & 47.72 & 9.07 & 0.3 & 0.5\\
+w/o Sorter (Ground-truth) & 48.32 & 39.89 & 47.72 & 46.16 & 17.6 & 952 \\
+w/o Near-Dedup & 0.00 & 37.14 & 47.72 & 25.52 & 2.1 & 529 \\
+w/o Image Dedup & -- & 39.40 & 47.72 & 44.44 & 15.9 & 724 \\
+w/o Audio Dedup & 50.19 & -- & 47.72 & 49.05 & 1.9 & 223 \\
+w/o Text Dedup & 47.67 & 39.79 & -- & 44.84 & 17.5 & 931 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+\end{comment}
+
+
+%\vspace{-3mm}
+\subsection{Ablation Study}
+
+Table~\ref{tab:ablation} quantifies the contribution of each MMdedup component on the Mixed-Test dataset (2.5GB, 17.6K files). We systematically disable individual components to isolate their effects on deduplication effectiveness and efficiency.
+
+\textbf{Impact of the Sorter.} We evaluate the Sorter's contribution through two complementary ablations. First, replacing predicted classifications with ground-truth labels (w/o Sorter, Ground-truth) yields nearly identical results to the full pipeline (46.16\% vs. 46.13\% overall deduplication), confirming that our Sorter introduces negligible classification errors on this dataset. Second, we simulate scenarios where the Sorter is absent and only a single modality deduplication algorithm can be processed. When restricted to image-only deduplication processing, the system achieves only 21.15\% overall deduplication despite removing 47.67\% of images, because it is ineffective for other two modalities, audio and text files remain entirely unprocessed. Similarly, audio-only and text-only configurations achieve merely 9.89\% and 9.07\% overall deduplication, respectively. These results demonstrate that the Sorter is essential for multimodal scenarios: without accurate classification, a deduplication pipeline can only target one modality, forfeiting the majority of potential storage savings.
+
+\textbf{Impact of Near-Duplicate Detection.} Disabling semantic similarity detection and relying solely on hash-based exact matching (w/o Near-Dedup) reduces overall deduplication from 46.13\% to 25.52\%, a 20.61 percentage-point drop. The impact is most pronounced for images, where deduplication falls from 48.32\% to 0\%. This occurs because our ImageNet-Expanded dataset contains no exact binary duplicates; all redundancy exists as near-duplicates due to transcoded formats and geometric transformations. In contrast, text deduplication remains unchanged at 47.72\%, since the Amazon-Expanded dataset contains substantial exact duplicates detectable by MD5 hashing. Audio deduplication decreases modestly from 39.77\% to 37.14\%, reflecting its mixed composition of exact and perturbed duplicates. These findings validate our core design principle: effective multimodal deduplication requires semantic similarity detection beyond hash-based exact matching, particularly for image data where near-duplicates dominate.
+
+\textbf{Impact of Modality-Specific Modules.} Removing individual deduplication modules reveals their complementary contributions. Disabling image deduplication (w/o Image Dedup) reduces storage savings from 950MB to 724MB, while decreasing processing time from 17.5m to 15.9m, indicating that image processing contributes moderate computational overhead relative to its storage benefit. Disabling audio deduplication (w/o Audio Dedup) dramatically reduces both time (17.5m to 1.9m) and storage savings (950MB to 223MB), reflecting audio's dominance in file size within this dataset. Disabling text deduplication (w/o Text Dedup) has minimal time impact (17.5m to 17.5m) but reduces storage savings from 950MB to 931MB, consistent with text files being numerous but individually small. Notably, removing one modality's deduplication slightly increases deduplication rates for other modalities (e.g., image deduplication rises from 48.32\% to 50.19\% when audio is disabled), likely due to reduced memory pressure enabling more thorough processing.
+
+The ablation results collectively validate our modular architecture. Each component, including the Sorter, near-duplicate detection, and modality-specific modules, contributes meaningfully to overall effectiveness. The full MMdedup pipeline delivers synergistic benefits with 46.13\% deduplication and 950MB savings that no single-modality approach can match, demonstrating the value of an integrated, end-to-end multimodal data-cleaning approach.
+
+
+\vspace{-2mm}
+\section{Discussion}
+\label{sec:discussion}
+
+We discuss the efficiency characteristics and scalability potential of MMdedup, followed by an assessment of current limitations and directions for future work.
+
+\vspace{-2mm}
+\subsection{Efficiency and Scalability}
+
+
+A key design goal of MMdedup is to achieve practical efficiency for real-world data engineering pipelines. The classification stage reaches 4.25 K files per second on a single CPU core, processing the 12K Mixed-Challenge dataset in under 3 seconds. Memory consumption remains bounded at approximately 4 MB regardless of dataset size because files are processed in a streaming fashion. The lightweight heuristic design, which combines magic number detection with selective JSON parsing, avoids the computational overhead of deep learning classifiers while maintaining perfect accuracy on adversarial inputs.
+
+
+The three modality-specific deduplication modules exhibit different computational profiles. Image deduplication achieves 101.2 images/second on a single RTX 3090 GPU, with the hierarchical clustering approach reducing complexity from $O(n^2)$ to $O(n^{3/2})$ and enabling processing of our 450GB dataset in 10.5 hours. Audio deduplication processes 20GB in 86 seconds (767 files/second), leveraging CPU-bound spectral fingerprinting with $O(n \log n)$ LSH indexing. Text deduplication handles the largest volume (500GB in 60 hours), achieving 14\% speedup over MinHash+LSH through sample-based comparison that limits complexity to $O(n \cdot S)$.
+
+The modular architecture offers natural parallelization at multiple levels. After classification, the three pipelines operate on disjoint subsets and can execute concurrently. Each module further supports intra-modality parallelism: image embedding scales across GPUs, audio fingerprinting distributes across CPU cores, and text processing supports chunk-based parallelism. For distributed deployment, hash-based partitioning on cluster or LSH bucket assignments maintains locality while enabling horizontal scaling. Based on our experiments, we estimate that a modest 4-node GPU cluster could process petabyte-scale datasets within practical time budgets, making MMdedup viable for industrial MLLM training data preparation.
+
+\subsection{Limitations and Future Work}
+Our current implementation has several limitations. The text and audio modules prioritize efficiency over deep semantic understanding. For example, N-gram similarity captures syntactic patterns but misses paraphrases, while spectral fingerprinting identifies acoustic duplicates but cannot detect semantically equivalent recordings with different acoustic signatures. The pipeline treats modalities independently and may miss cross-modal duplicates when identical content appears in different formats. In addition, optimal similarity thresholds vary across modalities and datasets, so they currently require empirical validation rather than automatic selection. Finally, MMdedup operates in batch mode and does not support incremental deduplication for streaming data ingestion.
+
+Future work could address these limitations through several directions: hybrid approaches applying lightweight filtering followed by selective deep semantic analysis; adaptive threshold selection using AutoML techniques; multimodal embeddings for cross-modal duplicate detection; incremental indexing with Bloom filters for streaming scenarios; and quality-aware selection that retains the highest-quality duplicate rather than arbitrary choice. The modular design of MMdedup facilitates such incremental improvements, and individual components can be upgraded without restructuring the overall pipeline.
+
+
+\begin{comment}
+\textcolor{red}{Current limitations stem from a trade-off between semantic depth and efficiency, which restricts the detection of paraphrases and diverse acoustic signatures. Furthermore, the unimodal architecture misses cross-modal redundancies, while reliance on manual thresholding and batch processing limits the system's adaptability to streaming data ingestion.}
+
+\textcolor{red}{Future research will focus on developing multimodal embeddings to bridge the cross-modal semantic gap and implementing Bloom-filter-based filtering to support incremental deduplication. Additionally, we plan to incorporate AutoML-based adaptive thresholding to enhance robustness across heterogeneous datasets. MMdedup’s modular design ensures that these enhancements can be integrated without a fundamental pipeline restructuring.}
+\end{comment}
+%==============================================================================
+\section{Conclusions}
+\label{sec:conclusion}
+
+We presented MMdedup, an end-to-end framework for multimodal data deduplication designed to clean the ``digital swamp'' of raw, heterogeneous web data for MLLM training. Our approach addresses a critical gap in existing data cleaning pipelines: the absence of an integrated solution that first classifies mixed-modality inputs and then applies modality-aware deduplication. The framework consists of two stages: 1) The Sorter stage employs a lightweight heuristic classifier combining magic number detection with JSON semantic parsing, achieving 100\% accuracy on adversarial inputs while maintaining high throughput (4.25 K files/second); 2) The deduplication stage applies tailored algorithms for each modality: CLIP-based semantic clustering for images, spectral fingerprinting with LSH for audio, and multi-granularity N-gram matching for text. Each algorithm is designed to balance deduplication quality against computational efficiency at scale.
+
+Our experimental evaluation on large-scale datasets demonstrates that MMdedup effectively removes both exact and near-duplicate content while preserving data utility for downstream MLLM training tasks. Key findings include: 1) the Sorter outperforms standard tools (libmagic, file command) by correctly handling JSON-wrapped modality references; 2) our image deduplication achieves 3.6$\times$ higher throughput than SemDeDup while improving downstream accuracy; 3) audio deduplication can achieve the highest downstream accuracy 92.01\% with an optimal balance between deduplication rate and performance; and 4) text deduplication matches MinHash quality with 14\% faster processing. Ablation studies confirm that near-duplicate detection contributes over 20 percentage points of additional deduplication beyond exact matching, validating our core design principle that semantic similarity detection is essential for effective multimodal data cleaning.
+
+As multimodal AI systems continue to scale, the demand for high-quality training data will only intensify. MMdedup provides a practical, validated solution for transforming chaotic web harvests into clean, deduplicated corpora, contributing to the broader goal of efficient and responsible AI development.
+
+
+
+
+
+\begin{comment}
+\section{Classification Performance}
+\label{sec:Classification_performance}
+
+To validate the effectiveness, robustness, and efficiency of our "Stage 1" Classification Sorter (described in Sec 3.1), we constructed a benchmark dataset, \texttt{mix\_dataset\_10k}, with $N=10,000$ files. This dataset was designed to mirror a real-world "digital swamp" scenario, comprising a near-balanced distribution of 3,333 image, 3,083 audio, and 3,084 text files, along with 500 "unknown" samples. We intentionally included "hard cases"---such as files with missing or incorrect extensions, truncated binary containers, and empty files---to test the classifier's robustness.
+
+We compared the performance of our Sorter against a "Naive Baseline" method that relies solely on file extensions. The comprehensive results are summarized in Table~\ref{tab:sorter_performance}.
+
+\begin{table}[t!]
+\centering
+\caption{Classification Sorter Performance Comparison on \texttt{mix\_dataset\_10k} ($N=10,000$)}
+\label{tab:sorter_performance}
+\begin{tabular}{l|c|c}
+\hline
+\textbf{Metric} & \textbf{Our Sorter} & \textbf{Baseline} \\
+\hline
+Overall Accuracy & \textbf{0.985} & 0.885 \\
+Macro Average F1-Score & \textbf{0.961} & 0.882 \\
+Weighted Average F1-Score & \textbf{0.986} & 0.882 \\
+Total Misclassified Files & \textbf{150} & 1,150 \\
+\hline
+Throughput (files/sec) & $5.66 \times 10^3$ & $5.99 \times 10^3$ \\
+Total CPU Time & 1.73s & \textit{\textasciitilde1.67s} \\
+Peak Memory Usage & \textbf{29.3 MB} & 43.6 MB \\
+\hline
+\end{tabular}
+\end{table}
+
+The performance gap between the two methods is stark. The Naive Baseline, being entirely dependent on file extensions, failed significantly when presented with "hard cases," resulting in 1,150 misclassified files and a low Macro F1-Score of 0.882.
+
+In contrast, our Sorter demonstrated high efficacy, achieving \textbf{98.5\% overall accuracy} and a Macro F1-Score of 0.961. It successfully compressed the total number of misclassified files by \textbf{87\%} (from 1,150 down to 150). This superior accuracy is directly attributable to the multi-source discrimination strategy detailed in Sec 3.1 such as file header magic numbers, printable character analysis, and JSON semantic voting which the baseline lacks.
+
+Furthermore, the Sorter demonstrates exceptional resource efficiency. While its throughput ($5.66 \times 10^3$ files/sec) is comparably high to the baseline, it achieves this high accuracy while consuming \textbf{33\% less peak memory} (29.3 MB vs. 43.6 MB). This experiment validates that our "Stage 1" Classification (Sorter) is robust, accurate, and a lightweight, efficient prerequisite for cleaning chaotic, heterogeneous data collections.
+
+
+
+\section{Experimental Dataset}
+
+\textbf{Tiny-Imagenet\cite{tiny-imagenet}}: The Tiny-Imagenet dataset is a curated subset of the larger ImageNet (ILSVRC) challenge, specifically designed for rapid prototyping and benchmarking of computer vision models. It provides a manageable yet diverse environment for tasks where training on the full ImageNet dataset would be computationally prohibitive. The dataset comprises 200 distinct image classes, structured into a training set of 100,000 images (500 per class), a validation set of 10,000 images (50 per class), and a test set of 10,000 images. All images are provided at a uniform resolution of $64\times64$ pixels, facilitating faster model training and evaluation.
+
+\textbf{Urbansound8K\cite{salamon2014dataset}}: This dataset is a standard benchmark for environmental sound classification (ESC), consisting of 8,732 labeled audio excerpts (duration $\leq$ 4s) of real-world urban sounds. The data is classified into 10 distinct categories derived from the urban sound taxonomy: air-conditioner, car-horn, children-playing, dog-bark, drilling, engine-idling, gun-shot, jackhammer, siren, and street-music. Crucially, the dataset is organized into 10 pre-defined folds to enable standardized cross-validation, ensuring robust and comparable model performance evaluations across different studies. 
+
+\textbf{Ag-news}\cite{Zhang2015CharacterlevelCN}: The AG News dataset is a foundational benchmark corpus in computational linguistics and data mining research. It encompasses over one million news articles aggregated from more than 2,000 distinct sources by the ComeToMyHead academic search engine. Given its scale and diversity, the dataset is widely employed to validate algorithms in text classification, clustering, and information retrieval. However, its aggregation from numerous outlets raises the possibility of significant near-duplicate content. The presence of such redundancies can skew experimental outcomes and impair the generalization capabilities of machine learning models, thereby necessitating a rigorous deduplication analysis to ensure the dataset's integrity.
+
+
+\section{Deduplication Results}
+We performed an approximate deduplication of the datasets for all three modalities, assessing the deduplication rates at various similarity thresholds. In cases of data overlap between the training and test sets, the duplicate entries were systematically removed from the training set to prevent information leakage.
+
+\subsection{Image}
+
+\textbf{The deduplication of image datasets:} As illustrated in Figure \ref{fig:image-Deduplication-Rate}, the deduplication rate for the image dataset is highly sensitive to the similarity threshold. The removal rate (i.e., the fraction of data identified as duplicate) increases monotonically as the similarity threshold is reduced.
+
+This relationship highlights a critical trade-off. The deduplication rate remains relatively low for thresholds between 0.8 and 0.9. However, the rate climbs sharply as the threshold drops below 0.7, eventually plateauing at a removal rate of over 80\% for similarity values at or below 0.5. This quantitative relationship between the threshold and the resulting data reduction will be analyzed in conjunction with downstream model performance in Section 6.
+
+\begin{figure}[t!]   
+    \centerline{\includegraphics[scale=0.8]{figures/image-Deduplication-Rate.png}}
+	\caption{The deduplication rate of Image}   
+	\label{fig:image-Deduplication-Rate}
+    \Description{The deduplication rate of Image}
+\end{figure}
+
+\subsection{Audio}
+
+\textbf{The deduplication of audio datasets:} As shown in Figure \ref{fig:audio-Deduplication-Rate}, the audio deduplication rate exhibits a similar, though distinct, relationship to the similarity threshold. Paralleling the image data, the rate increases sharply at lower thresholds, removing approximately 90\% of the data when the threshold is set below 0.5.
+
+Conversely, the rate decreases more gradually than for images at higher thresholds. For instance, a relatively high threshold of 0.8 still results in a deduplication rate of approximately 13\%. This specific trade-off for audio data—balancing the percentage of data removed against the strictness of the similarity threshold—will be evaluated in Section 6 based on its impact on downstream model training.
+
+\begin{figure}[t!]   
+    \centerline{\includegraphics[scale=0.4]{figures/audio.png}}
+	\caption{The deduplication rate of Audio}   
+	\label{fig:audio-Deduplication-Rate}
+    \Description{The deduplication rate of Audio}
+\end{figure}
+
+\subsection{Text}
+
+\textbf{The deduplication of text datasets:} As illustrated in Figure \ref{fig:text-Deduplication-Rate}, the text dataset exhibits a distinct relationship between the deduplication rate and its corresponding threshold, particularly when compared to audio and image data[cite: 418].
+
+The deduplication rate for text is markedly lower, peaking at approximately 40\% even at the most permissive thresholds. This contrasts with the rates approaching 90-95\% for audio and image data under similar conditions. Furthermore, the rate for text data declines gradually, falling from an initial 21\% at a threshold of 0.3 to approximately 10-15\% as the threshold increases toward 0.8. The impact of this specific trade-off on model training performance will be evaluated in the subsequent section.
+
+\begin{figure}[t!]   
+    \centerline{\includegraphics[scale=1]{figures/text-Deduplication-Rate.png}}
+	\caption{The deduplication rate of Text}   
+	\label{fig:text-Deduplication-Rate}
+    \Description{The deduplication rate of text}
+\end{figure}
+
+\section{Train Results}
+
+\subsection{Image}
+\label{sec:image-train-results}
+
+\textbf{Downstream Task Evaluation:} We now evaluate the impact of deduplication on downstream model performance. As shown in Figure \ref{fig:training on deduplicated image datasets}, the model's evaluation accuracy is critically dependent on the chosen similarity threshold.
+
+First, we observe that applying stringent thresholds (e.g., 0.8 or lower) results in a significant degradation in model performance compared to the undeduplicated baseline. In contrast, the dataset deduplicated using a more conservative threshold of 0.9 yields an accuracy curve almost identical to, and at several epochs slightly surpassing, the baseline model.
+
+\textbf{Analysis and Threshold Selection:} We now synthesize this finding with the deduplication rates presented in Section 5.1 (Figure \ref{fig:image-Deduplication-Rate}). The severe performance degradation observed with thresholds $\le 0.8$ corresponds directly to the aggressive data removal rates (over 80\%) shown in Figure \ref{fig:image-Deduplication-Rate}. Conversely, the 0.9 threshold strikes an effective balance: it removes a meaningful subset of near-duplicates (as shown in Figure \ref{fig:image-Deduplication-Rate}) while fully preserving the informational content required for successful model training.
+
+This finding validates our deduplication approach, demonstrating that it can reduce data redundancy without sacrificing model accuracy. We thus select 0.9 as the optimal similarity threshold for the image modality in our experiments.
+
+\begin{figure}[t!]   
+    \centerline{\includegraphics[scale=0.3]{figures/Image-threshold-eval-Accuracy.png}}
+	\caption{Training on deduplicated image datasets}   
+	\label{fig:training on deduplicated image datasets}
+    \Description{Training on deduplicated image datasets}
+\end{figure}
+
+\subsection{Audio}
+\label{sec:audio-train-results}
+
+\textbf{Downstream Task Evaluation:}
+We evaluated the audio datasets, with the results presented in Figure \ref{fig:training on deduplicated audio datasets}. The evaluation reveals a remarkable finding: the dataset deduplicated using a $0.7$ similarity threshold consistently \textbf{outperforms} the model trained on the full, original (undeduplicated) dataset.
+
+This performance gain is specific to the $0.7$ threshold. As shown in the figure, applying more stringent thresholds (e.g., $0.6$ or lower) leads to a significant degradation in accuracy. Conversely, more conservative thresholds (e.g., $0.8$ or $0.9$) result in performance comparable to, but not superior to, the baseline.
+
+\textbf{Analysis and Threshold Selection:}
+To understand this result, we synthesize this finding with the deduplication rates from Section 5.2 (Figure \ref{fig:audio-Deduplication-Rate}). The optimal $0.7$ threshold corresponds to a $47.73\%$ data reduction—effectively removing nearly half of the entire dataset.
+
+We attribute this counterintuitive performance gain to two synergistic factors. First, the dataset consists predominantly of environmental sounds, which often exhibit high redundancy and minimal spectrogram variance, making samples perceptually difficult to distinguish[cite: 457]. Second, our algorithm excels at identifying and eliminating this specific type of redundancy while precisely preserving the unique informational content. By removing this "noise," the model trains on a cleaner, more efficient dataset, leading to the observed performance improvement.
+
+Based on this analysis, we select $0.7$ as the optimal similarity threshold for the audio modality, as it simultaneously achieves a substantial data reduction ($47.73\%$) and improves downstream model accuracy.
+
+
+\begin{figure}[t!]   
+    \centerline{\includegraphics[scale=0.25]{figures/audio-threshold-eval-Accuracy.png}}
+	\caption{Training on deduplicated audio datasets}   
+	\label{fig:training on deduplicated audio datasets}
+    \Description{Training on deduplicated audio datasets}
+\end{figure}
+
+\subsection{Text}
+\label{sec:text-train-results}
+
+\textbf{Downstream Task Evaluation:}
+The training results for the text datasets, presented in Figure \ref{fig:training on deduplicated text datasets}, diverge significantly from those observed for image and audio. The final model accuracy on the text data remains \textbf{largely insensitive} to the chosen deduplication threshold. Nearly all deduplicated datasets, with thresholds ranging from 0.3 to 0.9, yield final performance curves that are virtually indistinguishable from the original, non-deduplicated baseline.
+
+\textbf{Analysis and Threshold Selection:}
+We attribute this insensitivity to the modest variation in the deduplication rates themselves, as presented in Section 5.3 (Figure \ref{fig:text-Deduplication-Rate}). Unlike image or audio, the text deduplication rates are clustered within a relatively low 10\%–40\% range across all thresholds.
+
+This analysis reveals several viable settings:
+\begin{itemize}
+    \item A conservative threshold of \textbf{0.8} emerges as a favorable setting. It achieves a $\approx$10\% deduplication rate while matching or even marginally exceeding the baseline performance.
+    \item A more aggressive threshold of \textbf{0.3} is also viable. While it removes more data ($\approx$21\% deduplication rate), it still maintains model performance comparable to the baseline.
+\end{itemize}
+
+In summary, our text deduplication framework can eliminate 10\%–21\% of the data without sacrificing downstream model performance. This confirms that the method effectively removes redundancy while preserving the dataset's informational integrity.
+
+
+
+\begin{figure}[t!]   
+    \centerline{\includegraphics[scale=0.3]{figures/text-threshold-eval-Accuracy.png}}
+	\caption{Training on deduplicated text datasets}   
+	\label{fig:training on deduplicated text datasets}
+    \Description{Training on deduplicated text datasets}
+\end{figure}
+
+\subsection{End-to-End Evaluation}
+To validate the robustness and scalability of MMdedup in a realistic data ingestion scenario, we conducted a comprehensive end-to-end evaluation on a large-scale constructed ``digital swamp.'' The dataset comprised 181,756 heterogeneous files, aggregating random samples from Tiny-Imagenet, Urbansound8K, and Ag-news, with 2,390 (1.3\%) corrupted or unrecognizable files intentionally injected to simulate real-world noise.
+
+\paragraph{Classification Performance and Robustness.}
+The Stage 1 Sorter processed a total of \textbf{4.88 GB} of raw heterogeneous data (181,756 files) in just \textbf{53.4 seconds}. It achieved a remarkable processing speed of \textbf{3,405 files/sec}, corresponding to a data throughput of \textbf{87.3 MB/s}. Given that the dataset consists largely of small, fragmented files (avg. $\approx$ 26KB), this metric underscores the Sorter's exceptional efficiency in handling high-overhead random I/O operations. Crucially, the Sorter acted as a robust firewall, successfully filtering out 2,390 corrupted files while accurately routing the valid inputs to downstream pipelines at line speed.
+
+\begin{table*}[htbp]
+  \centering
+  \caption{End-to-End Pipeline Performance on 181k Mixed Files (4.88 GB)}
+  \label{tab:end_to_end_performance}
+  \begin{tabular}{lcccccc}
+    \toprule
+    Stage / Modality & Input Count & Input Size & Time (s) & Speed (files/s) & Throughput (MB/s) & Dedup Rate \\
+    \midrule
+    \textbf{1. Sorter (Classification)} & \textbf{181,756} & \textbf{4.88 GB} & \textbf{53.4} & \textbf{3,405.0} & \textbf{87.30} & N/A \\
+    2. Image (CLIP) & 24,162 & 1.01 GB & 479.2 & 50.4 & 2.26 & 32.5\% \\
+    2. Audio (LSH) & 10,601 & 3.42 GB & 2,110.0 & 5.0 & 1.74 & 29.7\% \\
+    2. Text (N-gram) & 144,603 & 0.10 GB & 3,261.6 & 44.3 & 0.03\textsuperscript{*} & 25.9\% \\
+    \midrule
+    \textbf{Total / Aggregated} & \textbf{181,756} & \textbf{4.88 GB} & \textbf{$\approx$ 55 min} & \textbf{$\approx$ 55} & \textbf{1.48} & \textbf{26.7\%} \\
+    \bottomrule
+    \multicolumn{7}{p{\linewidth}}{\vspace{1mm} \footnotesize \textit{*Note: Text throughput (MB/s) is constrained by small average file size ($<$1KB) and rigorous sliding-window comparisons, yet maintains a high processing rate of 44.3 files/s.}} \\
+  \end{tabular}
+\end{table*}
+
+\paragraph{Deduplication Effectiveness and Efficiency.}
+In Stage 2, the performance metrics vary significantly by modality, reflecting their distinct computational and storage characteristics (see Table~\ref{tab:end_to_end_performance}):
+\begin{itemize}
+    \item \textbf{Text:} The text pipeline processed 144,603 files ($\sim$100 MB) at \textbf{44.3 files/sec}. While the data throughput appears lower (\textbf{0.03 MB/s}) due to the extreme fragmentation of text files (avg. $<$1KB), the system maintained a consistent file processing rate. This reflects our design choice to utilize a rigorous sliding-window N-gram algorithm to ensure high recall, prioritizing deduplication quality over raw byte throughput.
+    \item \textbf{Image:} The image pipeline handled 1.01 GB of data at \textbf{50.4 files/sec (2.26 MB/s)}, efficiently balancing I/O latency with the computational cost of CLIP semantic embedding extraction.
+    \item \textbf{Audio:} Processing the largest data volume (\textbf{3.42 GB}) proved the most intensive. The pipeline maintained a steady \textbf{5.0 files/sec}, achieving a throughput of \textbf{1.74 MB/s}. This reflects the inherent computational load of generating robust spectrogram fingerprints for large media files.
+\end{itemize}
+
+\paragraph{System Scalability.}
+Collectively, the MMdedup framework processed the entire heterogeneous dataset in approximately \textbf{55 minutes} (end-to-end execution time) on a single node. This represents a significant efficiency gain, enabling the flagging of 48,522 redundant files within a practical time window. These findings confirm that our ``classification-and-Clean'' architecture effectively scales to handle hundreds of thousands of files on commodity hardware while maintaining system stability and high deduplication precision.
+
+
+\section{Discussion}
+
+\textbf{Novelty and Integration:} Our primary contribution is the novel 'classification-and-Clean' architecture. While the individual Stage 2 components leverage established techniques, their effective integration into a seamless, automated pipeline presents significant engineering challenges. Our work addresses these challenges by adapting each technique for large-scale processing, ensuring interoperability, and validating the performance of the entire system on real-world data cleaning tasks. The contribution, therefore, lies in the design and empirical validation of this cohesive architecture, which transforms a collection of powerful but disparate algorithms into a practical, end-to-end solution.
+
+\textbf{Limitations in Semantic Depth:} Our current text and audio deduplication algorithms rely primarily on syntactic or acoustic features ($N$-grams or fingerprints) rather than \textbf{deep semantic content}. Consequently, while effective at capturing exact or near-duplicates, they may fail to identify content that is semantically identical but expressed using dissimilar representations (e.g., deep paraphrasing).
+
+\textbf{Limitations in Experimental Design:} This work validated the "classification" (Stage 1) and "Clean" (Stage 2) components on distinct, specialized benchmarks to isolate their respective performance. A key limitation is the absence of a single, end-to-end evaluation on a unified 'digital swamp' dataset. Future work should focus on validating the entire integrated pipeline, measuring the downstream impact after processing data from its raw, multi-modality state through to final deduplication.
+
+\textbf{Future Work: System Evolution.} We aim to evolve MMdedup from a static pipeline into an adaptive data governance system. Future iterations will integrate generative cleaning techniques (e.g., semantic masking from SyntheClean\cite{11047850} ) to identify complex paraphrasing, and adopt automated workflow optimization strategies (similar to UniClean’s unified operators) to dynamically schedule cleaning tasks based on real-time error distributions. This hybrid approach will bridge the gap between high-throughput classification and deep semantic repair.
+
+
+\section{Conclusion and Future Work}
+
+Our core contribution is MMdedup, a novel end-to-end "classification-and-Clean" framework engineered to \textbf{structure and refine} chaotic, multi-modality data repositories, colloquially termed "digital swamps." We detail three primary contributions:
+
+1. A Lightweight, Automated Sorter: We introduce a lightweight, high-throughput heuristic classifier (Sorter) constituting the framework's "Stage 1". This component automatically classifies raw, mixed-file inputs into modality-specific subsets (e.g., images, audio, text) without reliance on computationally expensive models. This sorting step is a critical prerequisite for the subsequent, \textbf{specialized deep-cleaning}.
+
+2. Systematic Integration and Adaptation of Modality-Specific Cleaning Pipelines: For "Stage 2," our framework integrates and adapts a suite of powerful, state-of-the-art deduplication techniques tailored to each modality. Our contribution is the demonstration of their effectiveness within a unified, automated system:
+\begin{itemize}
+    \item \textbf{Images:} We apply a semantic deduplication pipeline that leverages deep embeddings from CLIP, combined with an efficient clustering strategy to manage large-scale comparisons. Our work validates the application of this modern semantic approach in a practical, end-to-end workflow.
+    \item \textbf{Audio:} We implement a robust audio deduplication pipeline based on the established principles of spectrogram fingerprinting and Locality-Sensitive Hashing (LSH). We demonstrate its suitability for efficiently identifying acoustic duplicates at scale within our integrated framework.
+    \item \textbf{Text:} We utilize an efficient multi-granularity N-gram approach. This method is chosen for its high computational throughput, making it a pragmatic choice for handling massive volumes of text data in the initial, large-scale cleaning phase of our pipeline.
+\end{itemize}
+
+3. A Comprehensive Empirical Analysis: We present detailed experimental evidence of our framework's efficacy, demonstrating significant storage reductions (e.g., 47.7\% for audio data). Crucially, this \textbf{data reduction} is achieved while maintaining (and, on highly redundant datasets, even markedly improving) the performance of downstream machine learning tasks.
+\end{comment}
+
+%\section{ACKNOWLEDGMENTS}
+
+%\clearpage
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{references}
+
+\end{document}
+\endinput

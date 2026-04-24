@@ -1,47 +1,75 @@
-mix_dataset
-2026_new_experiment/datasets
-2026_new_experiment/artifacts_full_global
-2026_new_experiment/artifacts_10k
-2026_new_experiment/final_deduped_datasets
-# 不保存的文件类型
-*.log
-*.tmp
-*.cache
-*.bak
+# ── 数据集与大文件 ──────────────────────────────────────
+mix_dataset/
+mix_dataset_10k/
+mix_dataset_eval/
+test_dataset/
+evaluation/
+
+# ── 实验产物（运行时生成，不入库） ──────────────────────
+artifacts/
+outputs/
+experiments/results/download_datasets/
+experiments/results/artifacts_full_global/
+experiments/results/artifacts_10k/
+experiments/results/final_deduped_datasets/
+
+# ── omp 研究 harness（运行时状态） ───────────────────────
+.pipeline/
+
+# ── Python ───────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+.env
+
+# ── Node / Codex ─────────────────────────────────────────
+node_modules/
+
+# ── macOS ────────────────────────────────────────────────
+.DS_Store
+
+# ── 编辑器 ───────────────────────────────────────────────
 *.swp
+*.bak
+*.tmp
+
+# ── 数据文件（非源码） ───────────────────────────────────
+*.wav
 *.bin
+*.pkl
+*.pickle
+*.npy
+*.arrow
+*.csv
+*.jsonl
+*.jpg
+*.jpeg
+*.png
 *.pdf
-*.html
-*.aux
-*.out
-*.toc
+!paper/*.pdf
+*.exe
+
+# ── 压缩包 ───────────────────────────────────────────────
 *.gz
 *.zip
 *.tar
 *.rar
 *.7z
-*.exe
-*.csv
-*.json
-*.wav
-*.pyc
-*.npy
-*.txt
-audio/test.py
-*.pkl
-*.jpg
-*.jpeg
-*.png
-*.arrow
-*.pickle
-mix_dataset_10k
-evaluation
-mix_dataset_eval
-mix_dataset
-artifacts
-outputs
-tests
-test_dataset
+
+# ── 构建 / 日志 ──────────────────────────────────────────
+*.log
+*.cache
+*.aux
+*.out
+*.toc
+*.html
+
+# ── 配置（含机器相关路径，不入库） ──────────────────────
 *.yaml
-*.jsonl
-*.txt
+
+# ── 其他 ─────────────────────────────────────────────────
+audio/test.py
+tests/
