@@ -74,7 +74,7 @@ class EmbeddingConfig:
 
 @dataclass
 class DedupConfig:
-    method: str = "pairwise"  # pairwise | semdedup (legacy)
+    method: str = "qsemdedup"  # qsemdedup | pairwise | semdedup (alias) | legacy (alias)
     eps: float = 0.05
     max_candidates: int = 512
     legacy_config_file: Optional[str] = None
@@ -156,7 +156,7 @@ def load_pipeline_config(config_path: Optional[str]) -> ImagePipelineConfig:
             "save_embeddings_dir": None,
         },
         "dedup": {
-            "method": "pairwise",
+            "method": "qsemdedup",
             "eps": 0.05,
             "max_candidates": 512,
             "legacy_config_file": None,

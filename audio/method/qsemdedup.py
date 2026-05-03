@@ -238,55 +238,39 @@ class _CLAPEncoder:
 # Two-stage signature: coarse band-energy fingerprint
 # ---------------------------------------------------------------------------
 
-def _audio_signature(config: AudioQSemDedupConfig):
-    """Return a closure that yields MinHash tokens for an audio path.
+def _band_energy_tokens(
+    waveform: "np.ndarray",
+    sr: int,
+    cap: int,
+    n_bands: int = 8,
+) -> List[bytes]:
+    """Compute coarse 8-band log-energy quantization tokens from a waveform.
 
-    Tokens are coarse 8-band log-energy quantization vectors over 1-second
-    windows. Two clips that share spectro-temporal structure share a large
-    fraction of these tokens, which is sufficient for the LSH coarse-filter
-    role: the precision stage (CLAP) re-scores everything that survives.
-
-    A more elaborate Shazam-style peak-pair fingerprint is a future option,
-    but for plan A's two-stage pipeline this representation hits the right
-    cost/recall trade-off (no model, no GPU) on the order of microseconds
-    per clip.
+    Two clips that share spectro-temporal structure share a large fraction of
+    these tokens, which is enough for the LSH coarse-filter role: the
+    precision stage (CLAP) re-scores everything that survives. A Shazam-style
+    peak-pair fingerprint is a future option, but for plan A's two-stage
+    pipeline this representation hits the right cost/recall trade-off
+    (no model, no GPU) on the order of microseconds per clip.
     """
-    cap = max(1, config.lsh_max_tokens)
-
-    def _sig(path: Path) -> Iterable[bytes]:
-        try:
-            import librosa  # type: ignore
-        except ImportError:
-            return
-        try:
-            y, sr = librosa.load(
-                str(path),
-                sr=config.target_sr,
-                mono=True,
-                duration=config.max_audio_seconds,
-            )
-        except Exception:
-            return
-        if y is None or len(y) == 0:
-            return
-
-        n_bands = 8
-        win = sr  # 1-second window
-        emitted = 0
-        for start in range(0, len(y) - win + 1, win):
-            if emitted >= cap:
-                return
-            chunk = y[start : start + win]
-            spec = np.abs(np.fft.rfft(chunk))
-            band_size = max(1, len(spec) // n_bands)
-            energies = []
-            for b in range(n_bands):
-                seg = spec[b * band_size : (b + 1) * band_size]
-                energies.append(int(round(float(np.log1p(seg.sum())))))
-            yield ":".join(str(e) for e in energies).encode("utf-8")
-            emitted += 1
-
-    return _sig
+    if waveform is None or sr <= 0 or waveform.size == 0:
+        return []
+    win = sr  # 1-second window
+    if waveform.size < win:
+        return []
+    out: List[bytes] = []
+    for start in range(0, waveform.size - win + 1, win):
+        if len(out) >= cap:
+            break
+        chunk = waveform[start : start + win]
+        spec = np.abs(np.fft.rfft(chunk))
+        band_size = max(1, len(spec) // n_bands)
+        energies = []
+        for b in range(n_bands):
+            seg = spec[b * band_size : (b + 1) * band_size]
+            energies.append(int(round(float(np.log1p(seg.sum())))))
+        out.append(":".join(str(e) for e in energies).encode("utf-8"))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -328,12 +312,22 @@ def deduplicate_qsemdedup(
     if n == 0:
         return {"keepers": [], "duplicates": [], "duplicate_count": 0, "skipped": 0}
 
-    # 1. Quality scoring (and waveform load — also reused for fallback signatures).
+    # 1. Single per-file pass: load each waveform once with librosa, compute
+    #    quality score, and (when two_stage) precompute the LSH band-energy
+    #    tokens. Avoids re-loading the file for the signature step. CLAP loads
+    #    its own copy internally — that read we cannot avoid without rewriting
+    #    the encoder, so the lower bound is 2x I/O per file (us + CLAP).
     qualities = np.zeros(n, dtype=np.float32)
+    pre_signatures: Optional[List[List[bytes]]] = (
+        [[] for _ in range(n)] if config.two_stage else None
+    )
+    sig_cap = max(1, config.lsh_max_tokens)
     for i, p in enumerate(paths):
         try:
             wav, sr = _load_waveform(Path(p), config.target_sr, config.max_audio_seconds)
             qualities[i] = float(_quality_score(wav, sr, config.quality_metric))
+            if pre_signatures is not None:
+                pre_signatures[i] = _band_energy_tokens(wav, sr, sig_cap)
         except Exception:
             qualities[i] = 0.0
     qualities_norm = normalize_quality(qualities)
@@ -346,9 +340,17 @@ def deduplicate_qsemdedup(
     encoder = _CLAPEncoder(config)
 
     if config.two_stage:
+        # Hand pre-computed tokens to lsh_buckets via a tiny closure that just
+        # reads from the index → tokens table. Passing indices (0..n-1) as the
+        # ``items`` keeps the bookkeeping in one numeric space.
+        sig_lookup = pre_signatures or []
+
+        def _signature_from_index(idx: int):
+            return iter(sig_lookup[idx])
+
         buckets = lsh_buckets(
-            list(paths),
-            _audio_signature(config),
+            list(range(n)),
+            _signature_from_index,
             threshold=config.lsh_threshold,
             num_perm=config.lsh_num_perm,
         )

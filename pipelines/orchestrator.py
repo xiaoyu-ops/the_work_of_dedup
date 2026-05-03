@@ -1093,22 +1093,21 @@ class PipelineOrchestrator:
         if extra_args:
             args.extend(extra_args)
 
-        manifest_limit = (
-            modality_config.get("manifest_subset_count")
-            or modality_config.get("batch_size")
-            or self.config.general.get("batch_size")
-        )
-        subset = files[:manifest_limit] if manifest_limit else files
+        # Mirror the image stage's explicit None-check so that an explicit
+        # manifest_subset_count / batch_size of 0 actually means "no chunking"
+        # instead of falling through to the next config value (Python's
+        # ``a or b or c`` treats 0 as falsy).
+        manifest_limit = modality_config.get("manifest_subset_count")
+        if manifest_limit is None:
+            manifest_limit = modality_config.get("batch_size")
+        if manifest_limit is None:
+            manifest_limit = self.config.general.get("batch_size")
 
-        manifest_path = stage_dir / "input_manifest.txt"
-        manifest_path.write_text("\n".join(subset), encoding="utf-8")
-        extra_env = {
-            "PIPELINE_TEXT_INPUT_LIST": str(manifest_path),
-            "PIPELINE_TEXT_TOTAL": str(len(files)),
-        }
-        # Check manifest accessibility from orchestrator host before launching runner
+        # Check accessibility for the first chunk only (fail-fast on missing files).
+        first_subset = files[:manifest_limit] if (manifest_limit and manifest_limit > 0) else files
+        extra_env = {"PIPELINE_TEXT_TOTAL": str(len(files))}
         try:
-            self._check_manifest_accessibility(subset, stage_dir, modality)
+            self._check_manifest_accessibility(first_subset, stage_dir, modality)
         except Exception as exc:
             self.logger.error("Text stage manifest accessibility assertion failed: %s", exc)
             plan_entry["status"] = "failed"

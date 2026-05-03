@@ -50,7 +50,7 @@ class AudioEmbeddingConfig:
 
 @dataclass
 class AudioDedupConfig:
-    method: str = "jaccard"  # jaccard | lsh | md5 | phash | mfcc | qsemdedup
+    method: str = "qsemdedup"  # qsemdedup | jaccard | lsh | md5 | phash | mfcc
     threshold: float = 0.85
     max_candidates: int = 2048
     mfcc_threshold: float = 0.95
@@ -139,7 +139,7 @@ def load_pipeline_config(config_path: Optional[str]) -> AudioPipelineConfig:
             "threshold": 0.85,
         },
         "dedup": {
-            "method": "jaccard",
+            "method": "qsemdedup",
             "threshold": 0.85,
             "max_candidates": 2048,
             "mfcc_threshold": 0.95,
