@@ -157,6 +157,40 @@ def _quality_score(waveform: "np.ndarray", sr: int, metric: str) -> float:
 # CLAP encoding
 # ---------------------------------------------------------------------------
 
+def _patch_msclap_read_audio(clap_wrapper: Any) -> None:
+    """Replace msclap's torchaudio-based ``read_audio`` with a soundfile loader.
+
+    The default msclap path goes through ``torchaudio.load`` -> ``torchcodec``
+    -> system FFmpeg. On a machine without ffmpeg installed (typical macOS
+    out-of-the-box) this fails to load the shared libraries. ``soundfile``
+    handles WAV / FLAC / OGG natively via libsndfile, which is bundled in the
+    soundfile wheel — no system ffmpeg needed. For MP3/AAC/M4A users still
+    need ffmpeg, but plan A's audio runs use WAV.
+    """
+    try:
+        import soundfile as sf  # type: ignore
+        import torch  # type: ignore
+        import torchaudio.transforms as T  # type: ignore
+    except ImportError:
+        return
+
+    def _read_audio_soundfile(self, audio_path, resample: bool = True):
+        wav, sample_rate = sf.read(str(audio_path), always_2d=False)
+        if wav.ndim == 2:
+            # Mix down to mono.
+            wav = wav.mean(axis=1)
+        tensor = torch.from_numpy(wav).float().unsqueeze(0)
+        target_sr = self.args.sampling_rate
+        if resample and target_sr != sample_rate:
+            tensor = T.Resample(sample_rate, target_sr)(tensor)
+            sample_rate = target_sr
+        return tensor, sample_rate
+
+    import types
+
+    clap_wrapper.read_audio = types.MethodType(_read_audio_soundfile, clap_wrapper)
+
+
 class _CLAPEncoder:
     """Thin adapter that hides backend (msclap / laion-clap) selection."""
 
@@ -175,7 +209,9 @@ class _CLAPEncoder:
         model_kwargs: Dict[str, Any] = {"use_cuda": use_cuda}
         if self.config.clap_model_path:
             model_kwargs["model_fp"] = self.config.clap_model_path
-        return ("msclap", CLAP(**model_kwargs))
+        instance = CLAP(**model_kwargs)
+        _patch_msclap_read_audio(instance)
+        return ("msclap", instance)
 
     def _try_laion(self):
         try:
