@@ -527,10 +527,41 @@ def _run_deduplication(
     if method == "pairwise":
         return _deduplicate_pairwise(paths, embeddings, config)
 
-    if method in {"sem_dedup", "semdedup", "legacy"}:
+    # Q-SemDeDup is the canonical name for the unified framework's image
+    # instantiation. ``semdedup`` / ``sem_dedup`` / ``legacy`` are kept as
+    # aliases so historical configs and paper baselines keep working.
+    if method in {"qsemdedup", "sem_dedup", "semdedup", "legacy"}:
         return _deduplicate_sem_dedup(paths, embeddings, config, indices)
 
     raise ValueError(f"Unknown deduplication method: {config.method}")
+
+
+def _compute_image_quality(paths: Sequence[Path], metric: str) -> np.ndarray:
+    """Per-image quality signal feeding the Q-SemDeDup score.
+
+    ``file_size``: byte size from ``Path.stat()``. Cheap, no decode.
+    ``resolution``: width * height from the image header (PIL lazy-load — only
+    metadata is parsed, not pixels). Falls back to file_size on read errors.
+    """
+    metric = (metric or "file_size").lower()
+    if metric == "resolution":
+        if Image is None:
+            print("[image pipeline] PIL unavailable; resolution metric falls back to file_size")
+        else:
+            values = np.zeros(len(paths), dtype=np.float32)
+            for i, p in enumerate(paths):
+                try:
+                    with Image.open(p) as im:
+                        w, h = im.size
+                    values[i] = float(w) * float(h)
+                except Exception:
+                    try:
+                        values[i] = float(p.stat().st_size)
+                    except Exception:
+                        values[i] = 0.0
+            return values
+    # default: file size
+    return np.array([p.stat().st_size for p in paths], dtype=np.float32)
 
 
 def _perform_semdedup_on_groups(
@@ -586,24 +617,21 @@ def _perform_semdedup_on_groups(
             sim_to_center = feats @ centroid
             
             # --- Quality-Aware Sorting (Q-SemDeDup) ---
-            # Instead of just taking the closest to centroid, we prefer higher quality (larger file size)
-            # Alpha controls trade-off: 1.0 = Pure SemDeDup, 0.0 = Best Quality Only
+            # Score = alpha * Sim(x, C) + (1 - alpha) * Norm(Quality(x))
+            # alpha = 1: pure SemDeDup; alpha = 0: pure quality.
             alpha = float(getattr(config, "alpha", 0.7))
-            
+            quality_metric = str(getattr(config, "quality_metric", "file_size"))
+
             try:
-                # Use file size as a proxy for quality (resolution check is too slow here)
-                sizes = np.array([p.stat().st_size for p in local_paths], dtype=np.float32)
-                if sizes.max() > sizes.min():
-                    sizes_norm = (sizes - sizes.min()) / (sizes.max() - sizes.min())
+                quality = _compute_image_quality(local_paths, quality_metric)
+                if quality.max() > quality.min():
+                    quality_norm = (quality - quality.min()) / (quality.max() - quality.min())
                 else:
-                    sizes_norm = np.zeros_like(sizes)
-                
-                # Combined score: Quality-Adjusted Similarity
-                # Ensure sim is in [0,1] range roughly for weighing stability
-                combined_score = alpha * sim_to_center + (1 - alpha) * sizes_norm
+                    quality_norm = np.zeros_like(quality)
+                combined_score = alpha * sim_to_center + (1 - alpha) * quality_norm
                 sort_order = np.argsort(combined_score)[::-1]
-            except Exception:
-                # Fallback to pure similarity if IO error
+            except Exception as exc:
+                print(f"[image pipeline] quality scoring failed ({exc}); falling back to similarity")
                 sort_order = np.argsort(sim_to_center)[::-1]
             
             # C. Greedy De-dup
