@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import sys
 import time
 from pathlib import Path
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
@@ -642,7 +643,11 @@ class PipelineOrchestrator:
             return
 
         cwd = modality_config.get("workdir")
-        args = ["python", str(entrypoint_path)]
+        # When no conda env is configured, use the current interpreter so that
+        # local runs Just Work in a uv/venv. With env_name set, conda run will
+        # swap the interpreter for us, so the literal "python" stays.
+        python_cmd = "python" if env_name else sys.executable
+        args = [python_cmd, str(entrypoint_path)]
         extra_args = modality_config.get("args", [])
         if extra_args:
             args.extend(extra_args)
@@ -860,7 +865,11 @@ class PipelineOrchestrator:
             return
 
         cwd = modality_config.get("workdir")
-        args = ["python", str(entrypoint_path)]
+        # When no conda env is configured, use the current interpreter so that
+        # local runs Just Work in a uv/venv. With env_name set, conda run will
+        # swap the interpreter for us, so the literal "python" stays.
+        python_cmd = "python" if env_name else sys.executable
+        args = [python_cmd, str(entrypoint_path)]
         extra_args = modality_config.get("args", [])
         if extra_args:
             args.extend(extra_args)
@@ -1075,7 +1084,11 @@ class PipelineOrchestrator:
             return
 
         cwd = modality_config.get("workdir")
-        args = ["python", str(entrypoint_path)]
+        # When no conda env is configured, use the current interpreter so that
+        # local runs Just Work in a uv/venv. With env_name set, conda run will
+        # swap the interpreter for us, so the literal "python" stays.
+        python_cmd = "python" if env_name else sys.executable
+        args = [python_cmd, str(entrypoint_path)]
         extra_args = modality_config.get("args", [])
         if extra_args:
             args.extend(extra_args)

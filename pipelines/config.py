@@ -67,7 +67,8 @@ class ConfigLoader:
         def _abspath(relative_path: Optional[str]) -> Optional[str]:
             if not relative_path:
                 return relative_path
-            p = Path(relative_path)
+            # Expand ~ first so ``~/.cache/...`` works in portable configs.
+            p = Path(relative_path).expanduser()
             if not p.is_absolute():
                 p = (base_dir / p).resolve()
             return str(p)
