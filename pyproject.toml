@@ -30,10 +30,13 @@ audio = [
     "Pillow>=10.0",
 ]
 
-# Text: optional faster dedup methods (default jaccard needs no extras)
+# Text: optional faster dedup methods (default jaccard needs no extras).
+# Includes Q-SemDeDup deps (sentence-transformers + scikit-learn).
 text = [
     "datasketch>=1.6",
     "simhash>=2.1",
+    "sentence-transformers>=2.6",
+    "scikit-learn>=1.3",
 ]
 
 # Install everything

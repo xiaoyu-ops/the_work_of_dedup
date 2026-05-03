@@ -34,7 +34,7 @@ class TextEmbeddingConfig:
 
 @dataclass
 class TextDedupConfig:
-    method: str = "jaccard"
+    method: str = "qsemdedup"
     threshold: float = 0.8
     max_candidates: int = 5000
     num_perm: int = 128
@@ -45,6 +45,21 @@ class TextDedupConfig:
     # 当候选数超过 max_candidates 时，使用滚动窗口快速去重，
     # 该值表示每次仅与最近保留的 `window_size` 个样本比较
     window_size: int = 100
+    # --- Q-SemDeDup (method == "qsemdedup") ---
+    sbert_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
+    sbert_device: str = "auto"
+    sbert_batch_size: int = 64
+    n_clusters: Optional[int] = None
+    min_cluster_size: int = 2
+    eps: float = 0.05
+    alpha: float = 0.7
+    quality_metric: str = "entropy"
+    # MinHash LSH coarse filter for two-stage qsemdedup
+    two_stage: bool = False
+    lsh_threshold: float = 0.5
+    lsh_num_perm: int = 128
+    lsh_ngram_size: int = 5
+    lsh_max_char_grams: int = 200
 
 
 @dataclass
@@ -118,7 +133,7 @@ def load_pipeline_config(config_path: Optional[str]) -> TextPipelineConfig:
             "errors": "ignore",
         },
         "dedup": {
-            "method": "jaccard",
+            "method": "qsemdedup",
             "threshold": 0.8,
             "max_candidates": 5000,
             "num_perm": 128,
@@ -126,6 +141,20 @@ def load_pipeline_config(config_path: Optional[str]) -> TextPipelineConfig:
             "simhash_window": 1000,
             "max_words": 200,
             "max_char_grams": 200,
+            "window_size": 100,
+            "sbert_model_name": "sentence-transformers/all-MiniLM-L6-v2",
+            "sbert_device": "auto",
+            "sbert_batch_size": 64,
+            "n_clusters": None,
+            "min_cluster_size": 2,
+            "eps": 0.05,
+            "alpha": 0.7,
+            "quality_metric": "entropy",
+            "two_stage": False,
+            "lsh_threshold": 0.5,
+            "lsh_num_perm": 128,
+            "lsh_ngram_size": 5,
+            "lsh_max_char_grams": 200,
         },
     }
 
@@ -338,7 +367,35 @@ def _run_deduplication(
             include_words=True,
         )
 
+    if method == "qsemdedup":
+        return _deduplicate_by_qsemdedup(paths, texts, config)
+
     raise ValueError(f"Unknown text deduplication method: {config.method}")
+
+
+def _deduplicate_by_qsemdedup(
+    paths: Sequence[Path],
+    texts: Sequence[str],
+    config: TextDedupConfig,
+) -> Dict[str, Any]:
+    from text.method.qsemdedup import QSemDedupConfig, deduplicate_qsemdedup
+
+    qcfg = QSemDedupConfig(
+        model_name=config.sbert_model_name,
+        device=config.sbert_device,
+        batch_size=config.sbert_batch_size,
+        n_clusters=config.n_clusters,
+        min_cluster_size=config.min_cluster_size,
+        eps=config.eps,
+        alpha=config.alpha,
+        quality_metric=config.quality_metric,
+        two_stage=config.two_stage,
+        lsh_threshold=config.lsh_threshold,
+        lsh_num_perm=config.lsh_num_perm,
+        lsh_ngram_size=config.lsh_ngram_size,
+        lsh_max_char_grams=config.lsh_max_char_grams,
+    )
+    return deduplicate_qsemdedup(paths, texts, qcfg)
 
 
 def _deduplicate_by_md5(
