@@ -50,7 +50,7 @@ class AudioEmbeddingConfig:
 
 @dataclass
 class AudioDedupConfig:
-    method: str = "jaccard"  # jaccard | hash (reserved for future)
+    method: str = "jaccard"  # jaccard | lsh | md5 | phash | mfcc | qsemdedup
     threshold: float = 0.85
     max_candidates: int = 2048
     mfcc_threshold: float = 0.95
@@ -58,6 +58,21 @@ class AudioDedupConfig:
     lsh_b: int = 20
     lsh_r: int = 10
     lsh_collision_threshold: int = 2
+    # --- Q-SemDeDup (method == "qsemdedup") ---
+    clap_backend: str = "auto"  # auto | msclap | laion_clap
+    clap_model_path: Optional[str] = None
+    clap_device: str = "auto"
+    target_sr: int = 48000
+    max_audio_seconds: float = 30.0
+    n_clusters: Optional[int] = None
+    min_cluster_size: int = 2
+    eps: float = 0.05
+    alpha: float = 0.7
+    quality_metric: str = "snr"  # snr | duration
+    two_stage: bool = False
+    lsh_threshold: float = 0.5
+    lsh_num_perm: int = 128
+    lsh_max_tokens: int = 200
 
 
 @dataclass
@@ -127,6 +142,24 @@ def load_pipeline_config(config_path: Optional[str]) -> AudioPipelineConfig:
             "method": "jaccard",
             "threshold": 0.85,
             "max_candidates": 2048,
+            "mfcc_threshold": 0.95,
+            "lsh_b": 20,
+            "lsh_r": 10,
+            "lsh_collision_threshold": 2,
+            "clap_backend": "auto",
+            "clap_model_path": None,
+            "clap_device": "auto",
+            "target_sr": 48000,
+            "max_audio_seconds": 30.0,
+            "n_clusters": None,
+            "min_cluster_size": 2,
+            "eps": 0.05,
+            "alpha": 0.7,
+            "quality_metric": "snr",
+            "two_stage": False,
+            "lsh_threshold": 0.5,
+            "lsh_num_perm": 128,
+            "lsh_max_tokens": 200,
         },
     }
 
@@ -192,6 +225,24 @@ def run_audio_pipeline(paths: Sequence[Path], config: AudioPipelineConfig) -> Au
         return AudioPipelineResult(keepers=[], duplicates=[], missing=missing, stats=stats)
 
     method = (config.dedup.method or "jaccard").lower()
+
+    if method == "qsemdedup":
+        dedup_summary = _run_audio_qsemdedup(paths=unique_paths, config=config.dedup)
+        stats = {
+            "fingerprint_backend": "clap",
+            "embedding_backend": dedup_summary.get("backend", "clap"),
+            "unique": len(dedup_summary["keepers"]),
+            "duplicates": dedup_summary["duplicate_count"],
+            "missing": len(missing),
+            "processed": len(unique_paths),
+            "skipped_due_to_limit": dedup_summary["skipped"],
+        }
+        return AudioPipelineResult(
+            keepers=dedup_summary["keepers"],
+            duplicates=dedup_summary["duplicates"],
+            missing=missing,
+            stats=stats,
+        )
 
     if method in {"md5", "phash", "mfcc"}:
         dedup_summary = _run_lightweight_dedup(paths=unique_paths, config=config.dedup)
@@ -719,3 +770,32 @@ def _deduplicate_by_lsh(
         "duplicate_count": duplicate_count,
         "skipped": 0,
     }
+
+
+def _run_audio_qsemdedup(
+    paths: Sequence[Path],
+    config: AudioDedupConfig,
+) -> Dict[str, Any]:
+    """Bridge AudioDedupConfig -> audio.method.qsemdedup."""
+    from audio.method.qsemdedup import (
+        AudioQSemDedupConfig,
+        deduplicate_qsemdedup,
+    )
+
+    qcfg = AudioQSemDedupConfig(
+        clap_backend=config.clap_backend,
+        clap_model_path=config.clap_model_path,
+        device=config.clap_device,
+        target_sr=config.target_sr,
+        max_audio_seconds=config.max_audio_seconds,
+        n_clusters=config.n_clusters,
+        min_cluster_size=config.min_cluster_size,
+        eps=config.eps,
+        alpha=config.alpha,
+        quality_metric=config.quality_metric,
+        two_stage=config.two_stage,
+        lsh_threshold=config.lsh_threshold,
+        lsh_num_perm=config.lsh_num_perm,
+        lsh_max_tokens=config.lsh_max_tokens,
+    )
+    return deduplicate_qsemdedup(paths, qcfg)

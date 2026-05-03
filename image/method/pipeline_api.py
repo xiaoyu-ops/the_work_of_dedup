@@ -80,6 +80,11 @@ class DedupConfig:
     legacy_config_file: Optional[str] = None
     legacy_keep_indices_file: Optional[str] = None
     legacy_cluster_dir: Optional[str] = None
+    # --- Unified Q-SemDeDup knobs (image-side instantiation) ---
+    # Score = alpha * Sim(x, C) + (1 - alpha) * Norm(Quality(x))
+    # alpha = 1 -> pure SemDeDup; alpha = 0 -> pure quality.
+    alpha: float = 0.7
+    quality_metric: str = "file_size"  # file_size | resolution
 
 
 @dataclass
@@ -157,6 +162,8 @@ def load_pipeline_config(config_path: Optional[str]) -> ImagePipelineConfig:
             "legacy_config_file": None,
             "legacy_keep_indices_file": None,
             "legacy_cluster_dir": None,
+            "alpha": 0.7,
+            "quality_metric": "file_size",
         },
     }
 
@@ -533,7 +540,16 @@ def _perform_semdedup_on_groups(
     config: DedupConfig,
     desc: str = "SemDeDup"
 ) -> Dict[str, object]:
-    """Core SemDeDup logic applied to arbitrary groups of indices."""
+    """Core SemDeDup logic applied to arbitrary groups of indices.
+
+    Image-side instantiation of the unified Q-SemDeDup framework. The text and
+    audio runners share their selection logic via
+    :func:`pipelines.qsemdedup_core.select_q_semdedup`; this image path keeps
+    its bespoke per-group loop because file-size quality lookup is interleaved
+    with similarity scoring (cluster-local I/O), but it follows the identical
+    formula ``Score = alpha*Sim(x,C) + (1-alpha)*Norm(Quality(x))``. ``alpha``
+    is configurable via :class:`DedupConfig.alpha` (default 0.7).
+    """
     keepers: List[Path] = []
     duplicates: List[Dict[str, object]] = []
     duplicate_count = 0
@@ -572,7 +588,7 @@ def _perform_semdedup_on_groups(
             # --- Quality-Aware Sorting (Q-SemDeDup) ---
             # Instead of just taking the closest to centroid, we prefer higher quality (larger file size)
             # Alpha controls trade-off: 1.0 = Pure SemDeDup, 0.0 = Best Quality Only
-            alpha = 0.7 
+            alpha = float(getattr(config, "alpha", 0.7))
             
             try:
                 # Use file size as a proxy for quality (resolution check is too slow here)
