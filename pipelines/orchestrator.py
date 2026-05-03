@@ -1752,13 +1752,19 @@ class PipelineOrchestrator:
           - ``pair_strategy`` (str, default "stem"): only "stem" is built in
             for now; the function-level API supports custom strategies.
 
-        The stage is skipped — with a logged warning, not an error — when
-        fewer than 2 modalities produced keepers.
+        Stage layout follows the convention of stage1_sorter / stage2_*:
+        artifacts live in ``artifacts/<run>/stage3_joint_dedup/`` with
+        ``_SUCCESS`` / ``_FAILURE`` / ``_LOCK`` sentinels and ``summary.json``,
+        and is honored by ``general.resume: true``.
         """
         joint_cfg = (self.config.general or {}).get("joint_dedup") or {}
         if joint_cfg.get("enabled") is False:
             self.logger.info("Joint dedup stage disabled by config")
             return
+
+        stage_name = "stage3_joint_dedup"
+        stage_dir = self.stage_artifact_dir(stage_name)
+        stage_dir.mkdir(parents=True, exist_ok=True)
 
         modality_outputs: Dict[str, str] = {}
         for modality in ("image", "audio", "text"):
@@ -1767,77 +1773,129 @@ class PipelineOrchestrator:
             if section.get("enabled", True) and output_dir:
                 modality_outputs[modality] = output_dir
 
-        modality_results: List[ModalityKeepers] = []
-        per_modality_meta: Dict[str, Dict[str, Any]] = {}
-        for modality, output_dir in modality_outputs.items():
-            summary_path = Path(output_dir) / f"{modality}_runner_summary.json"
-            keepers: List[Path] = []
-            if summary_path.exists():
-                try:
-                    summary = json.loads(summary_path.read_text(encoding="utf-8"))
-                except Exception as exc:  # pragma: no cover
-                    self.logger.warning("Failed to read %s: %s", summary_path, exc)
-                    summary = {}
-                kfile = summary.get("keepers_file")
-                if kfile and Path(kfile).exists():
-                    try:
-                        keepers = [
-                            Path(line)
-                            for line in Path(kfile).read_text(encoding="utf-8").splitlines()
-                            if line.strip()
-                        ]
-                    except Exception as exc:  # pragma: no cover
-                        self.logger.warning("Failed to read keepers file %s: %s", kfile, exc)
-            if not keepers:
-                # Fallback: list output dir contents (works for runs that copied keepers).
-                keepers = load_keepers_from_output_dir(Path(output_dir))
-            if keepers:
-                modality_results.append(ModalityKeepers(name=modality, keepers=keepers))
-                per_modality_meta[modality] = {
-                    "output_dir": output_dir,
-                    "keepers": len(keepers),
-                }
-            else:
-                self.logger.info("Joint dedup: no keepers found for %s; skipping", modality)
+        pair_strategy = (joint_cfg.get("pair_strategy") or "stem").lower()
+        config_hash_input = {
+            "modality_outputs": modality_outputs,
+            "pair_strategy": pair_strategy,
+        }
+        config_hash = compute_dict_hash(config_hash_input)
 
-        if len(modality_results) < 2:
-            self.logger.info(
-                "Joint dedup stage requires >=2 modalities with keepers; got %d — skipping",
-                len(modality_results),
-            )
-            self.summary["joint_dedup"] = {
-                "skipped": True,
-                "reason": "fewer_than_two_modalities_with_keepers",
-                "modalities": list(per_modality_meta.keys()),
-            }
-            self._write_run_manifest()
+        if self._stage_should_resume(stage_name, config_hash):
+            self.logger.info("Joint dedup stage already complete — resuming, skipping")
+            self._append_existing_stage_summary(stage_dir)
             return
 
-        # Default pair strategy is stem-based; advanced strategies are a
-        # function-level API extension for callers that need them.
-        pair_fn = stem_pair_id
-        result = join_keepers(modality_results, pair_id_fn=pair_fn)
+        flags = self._stage_flags(stage_name)
+        if flags["lock"].exists():
+            raise StageLockError(f"Stale joint dedup stage lock: {flags['lock']}")
 
-        # Persist the full mapping for downstream tools.
-        joint_summary_path = self.output_root / "joint_dedup_summary.json"
+        modality_results: List[ModalityKeepers] = []
+        per_modality_meta: Dict[str, Dict[str, Any]] = {}
+        lock_acquired = False
+        started = time.time()
         try:
-            write_joint_summary(result, joint_summary_path)
-        except Exception as exc:  # pragma: no cover
-            self.logger.warning("Failed to write joint dedup summary: %s", exc)
+            acquire_stage_lock(stage_dir)
+            lock_acquired = True
 
-        self.summary["joint_dedup"] = {
-            "skipped": False,
-            "summary_file": str(joint_summary_path),
-            "stats": result.stats,
-            "modalities": per_modality_meta,
-        }
-        self._write_run_manifest()
-        self.logger.info(
-            "Joint dedup: %d pairs survived across %d modalities (drops=%d)",
-            result.stats.get("joint_keepers", 0),
-            result.stats.get("input_modalities", 0),
-            result.stats.get("joint_drops", 0),
-        )
+            for modality, output_dir in modality_outputs.items():
+                summary_path = Path(output_dir) / f"{modality}_runner_summary.json"
+                keepers: List[Path] = []
+                if summary_path.exists():
+                    try:
+                        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+                    except Exception as exc:  # pragma: no cover
+                        self.logger.warning("Failed to read %s: %s", summary_path, exc)
+                        summary = {}
+                    kfile = summary.get("keepers_file")
+                    if kfile and Path(kfile).exists():
+                        try:
+                            keepers = [
+                                Path(line)
+                                for line in Path(kfile).read_text(encoding="utf-8").splitlines()
+                                if line.strip()
+                            ]
+                        except Exception as exc:  # pragma: no cover
+                            self.logger.warning("Failed to read keepers file %s: %s", kfile, exc)
+                if not keepers:
+                    keepers = load_keepers_from_output_dir(Path(output_dir))
+                if keepers:
+                    modality_results.append(ModalityKeepers(name=modality, keepers=keepers))
+                    per_modality_meta[modality] = {
+                        "output_dir": output_dir,
+                        "keepers": len(keepers),
+                    }
+                else:
+                    self.logger.info("Joint dedup: no keepers found for %s; skipping", modality)
+
+            if len(modality_results) < 2:
+                self.logger.info(
+                    "Joint dedup requires >=2 modalities with keepers; got %d — skipping",
+                    len(modality_results),
+                )
+                self.summary["joint_dedup"] = {
+                    "skipped": True,
+                    "reason": "fewer_than_two_modalities_with_keepers",
+                    "modalities": list(per_modality_meta.keys()),
+                }
+                artifact = StageArtifact(
+                    stage_name=stage_name,
+                    status="skipped",
+                    elapsed_seconds=time.time() - started,
+                    output_paths={},
+                    metadata={"config_hash": config_hash, "skipped": True},
+                )
+                self.save_stage_result(stage_name, artifact, success=True)
+                return
+
+            pair_fn = stem_pair_id  # only built-in strategy for now
+            result = join_keepers(modality_results, pair_id_fn=pair_fn)
+
+            joint_summary_path = stage_dir / "joint_dedup_summary.json"
+            write_joint_summary(result, joint_summary_path)
+
+            stage_summary_payload: Dict[str, Any] = {
+                "skipped": False,
+                "summary_file": str(joint_summary_path),
+                "stats": result.stats,
+                "modalities": per_modality_meta,
+                "pair_strategy": pair_strategy,
+            }
+            self.summary["joint_dedup"] = stage_summary_payload
+
+            artifact = StageArtifact(
+                stage_name=stage_name,
+                status="success",
+                elapsed_seconds=time.time() - started,
+                output_paths={"summary": str(joint_summary_path)},
+                metadata={
+                    "config_hash": config_hash,
+                    "stats": result.stats,
+                    "modalities": per_modality_meta,
+                    "pair_strategy": pair_strategy,
+                },
+            )
+            self.save_stage_result(stage_name, artifact, success=True)
+            self.logger.info(
+                "Joint dedup: %d pairs survived across %d modalities (drops=%d)",
+                result.stats.get("joint_keepers", 0),
+                result.stats.get("input_modalities", 0),
+                result.stats.get("joint_drops", 0),
+            )
+        except Exception as exc:
+            self.logger.error("Joint dedup stage failed: %s", exc, exc_info=True)
+            artifact = StageArtifact(
+                stage_name=stage_name,
+                status="failed",
+                elapsed_seconds=time.time() - started,
+                output_paths={},
+                metadata={"config_hash": config_hash, "error": str(exc)},
+            )
+            self.save_stage_result(stage_name, artifact, success=False)
+            raise
+        finally:
+            if lock_acquired:
+                release_stage_lock(stage_dir)
+            self._write_run_manifest()
 
     def run(self) -> None:
         self.logger.info("Starting pipeline run %s", self.run_id)

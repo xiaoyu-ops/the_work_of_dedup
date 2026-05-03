@@ -776,11 +776,27 @@ def _run_audio_qsemdedup(
     paths: Sequence[Path],
     config: AudioDedupConfig,
 ) -> Dict[str, Any]:
-    """Bridge AudioDedupConfig -> audio.method.qsemdedup."""
-    from audio.method.qsemdedup import (
-        AudioQSemDedupConfig,
-        deduplicate_qsemdedup,
-    )
+    """Bridge AudioDedupConfig -> audio.method.qsemdedup with phash fallback.
+
+    If CLAP cannot be loaded (msclap / laion-clap not installed, model download
+    fails, ...) we fall back to the lightweight ``phash`` path so the pipeline
+    keeps running. The fallback is logged and recorded in the result's
+    ``backend`` / ``fallback_reason`` keys for downstream visibility.
+    """
+    try:
+        from audio.method.qsemdedup import (
+            AudioQSemDedupConfig,
+            deduplicate_qsemdedup,
+        )
+    except Exception as exc:
+        print(
+            f"[audio pipeline] qsemdedup module unavailable ({exc}); "
+            "falling back to phash"
+        )
+        result = _run_lightweight_dedup(paths=paths, config=_phash_config(config))
+        result["backend"] = "phash"
+        result["fallback_reason"] = f"qsemdedup_import_failed: {exc}"
+        return result
 
     qcfg = AudioQSemDedupConfig(
         clap_backend=config.clap_backend,
@@ -798,4 +814,23 @@ def _run_audio_qsemdedup(
         lsh_num_perm=config.lsh_num_perm,
         lsh_max_tokens=config.lsh_max_tokens,
     )
-    return deduplicate_qsemdedup(paths, qcfg)
+    try:
+        result = deduplicate_qsemdedup(paths, qcfg)
+        result.setdefault("backend", f"clap[{config.clap_backend}]")
+        return result
+    except Exception as exc:
+        print(
+            f"[audio pipeline] qsemdedup run failed ({exc}); falling back to phash. "
+            "Install audio extras with `uv sync --extra audio` to enable CLAP."
+        )
+        result = _run_lightweight_dedup(paths=paths, config=_phash_config(config))
+        result["backend"] = "phash"
+        result["fallback_reason"] = f"qsemdedup_run_failed: {exc}"
+        return result
+
+
+def _phash_config(src: AudioDedupConfig) -> AudioDedupConfig:
+    """Clone ``src`` with method=phash for fallback runs."""
+    from dataclasses import replace
+
+    return replace(src, method="phash")
