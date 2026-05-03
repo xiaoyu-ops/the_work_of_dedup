@@ -1774,6 +1774,13 @@ class PipelineOrchestrator:
                 modality_outputs[modality] = output_dir
 
         pair_strategy = (joint_cfg.get("pair_strategy") or "stem").lower()
+        supported_strategies = {"stem"}
+        if pair_strategy not in supported_strategies:
+            raise ValueError(
+                f"Unsupported general.joint_dedup.pair_strategy={pair_strategy!r}; "
+                f"supported: {sorted(supported_strategies)}. Custom strategies "
+                "can be passed at the function level via joint_dedup.join_keepers(pair_id_fn=...)."
+            )
         config_hash_input = {
             "modality_outputs": modality_outputs,
             "pair_strategy": pair_strategy,

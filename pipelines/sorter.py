@@ -40,12 +40,22 @@ def read_files_from_directory(directory: str):
     print(f"\n[Sorter] Scan complete. Found {len(all_files)} files.")
     return all_files
 
-IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tif", ".tiff"}
-# Only allow these extensions to enter the image pipeline during runs; everything else is forced to unknown
-STRICT_IMAGE_EXTS = {".png", ".jpg", ".jpeg"}
-STRICT_AUDIO_EXTS = {".wav"}
-AUDIO_EXTS = {".wav", ".mp3", ".aac", ".flac", ".ogg", ".m4a", ".wma"}
+IMAGE_EXTS = {
+    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp",
+    ".tif", ".tiff", ".heic", ".heif", ".avif",
+}
+AUDIO_EXTS = {".wav", ".mp3", ".aac", ".flac", ".ogg", ".m4a", ".wma", ".opus"}
 TEXT_EXTS = {".txt", ".json", ".csv", ".md", ".xml", ".yaml", ".yml", ".ini", ".log", ".tsv"}
+
+# Strict extensions are the post-classification safety net: even if magic
+# detection is correct, only files whose extension is in these sets are
+# allowed into the per-modality runners (the runners' decoders — open_clip
+# preprocessing for images, librosa+ffmpeg for audio — can already handle
+# every format listed below). Plan A relaxes the previous narrow whitelist
+# (.png/.jpg/.jpeg only) so LAION-style mixed corpora and AudioCaps-style
+# multi-format audio aren't silently dropped to ``unknown``.
+STRICT_IMAGE_EXTS = set(IMAGE_EXTS)
+STRICT_AUDIO_EXTS = set(AUDIO_EXTS)
 
 JSON_TEXT_KEYS = {"text", "content", "title", "sentence", "article"}
 JSON_AUDIO_KEYS = {"audio", "audio_url", "audio_path", "wav", "mp3"}
@@ -119,22 +129,79 @@ def is_mostly_printable(data: bytes) -> bool:
 
 
 def sniff_magic(header: bytes) -> Optional[str]:
+    """Return ``"image"`` / ``"audio"`` / ``"text"`` based on header magic bytes.
+
+    Covers the formats that real-world multimodal corpora actually contain:
+    PNG / JPEG / GIF / WebP / TIFF / HEIC / AVIF / SVG for images; WAV / MP3 /
+    FLAC / OGG / M4A (MP4 audio) / AAC ADTS for audio; and JSON-shaped payloads
+    for text. Returns ``None`` when the header is ambiguous so the caller can
+    fall back to extension or printability heuristics.
+    """
+    if not header:
+        return None
+
+    # ------------------------- Images -------------------------
     if header.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image"
+    # JPEG: SOI marker FF D8 FF (always; sub-byte indicates JFIF/EXIF/etc.)
+    if header[:3] == b"\xff\xd8\xff":
         return "image"
     if header.startswith(b"GIF87a") or header.startswith(b"GIF89a"):
         return "image"
+    # WebP: "RIFF" + 4 bytes size + "WEBP"
+    if header[:4] == b"RIFF" and header[8:12] == b"WEBP":
+        return "image"
+    # TIFF (little-endian II*\0 / big-endian MM\0*)
+    if header[:4] in (b"II*\x00", b"MM\x00*"):
+        return "image"
+    # BMP
+    if header[:2] == b"BM":
+        return "image"
+    # HEIC / HEIF / AVIF: ISO BMFF box "ftyp" at bytes 4-8 with brand 8-12.
+    # Image brands: heic, heix, hevc, mif1, msf1, avif, avis.
+    if header[4:8] == b"ftyp":
+        brand = header[8:12].lower()
+        if brand in {b"heic", b"heix", b"hevc", b"mif1", b"msf1", b"avif", b"avis"}:
+            return "image"
+        # MP4 audio brands: M4A , M4B , isom (ambiguous — could be video too,
+        # but for our pipeline audio is the safer assumption when the file is
+        # routed into AUDIO_EXTS by suffix).
+        if brand in {b"m4a ", b"m4b ", b"mp42", b"isom", b"dash"}:
+            return "audio"
+
+    # SVG / XML-ish
+    lowered = header.lower()
+    if b"<svg" in lowered or b"metadata:image" in header:
+        return "image"
+
+    # ------------------------- Audio --------------------------
+    # WAV: RIFF...WAVE
     if header[:4] == b"RIFF" and header[8:12] == b"WAVE":
         return "audio"
+    # MP3 with ID3v2 metadata
     if header.startswith(b"ID3"):
         return "audio"
+    # MP3 frame sync (no ID3): 0xFFE / 0xFFF (audio MPEG layer III).
+    # First 11 bits set means MPEG sync; layer III narrows the second byte.
+    if header[:1] == b"\xff" and len(header) >= 2 and (header[1] & 0xe0) == 0xe0:
+        # Layer-III sync patterns: \xfb (MPEG1), \xf3 (MPEG2), \xf2 (MPEG2.5)
+        if header[1] in {0xfb, 0xf3, 0xf2, 0xfa, 0xf4}:
+            return "audio"
+    # AAC ADTS: 0xFFF1 / 0xFFF9 sync word
+    if header[:1] == b"\xff" and len(header) >= 2 and header[1] in {0xf1, 0xf9}:
+        return "audio"
+    # FLAC
     if header.startswith(b"fLaC"):
         return "audio"
-    lowered = header.lower()
-    if b"metadata:image" in header or b"<svg" in lowered:
-        return "image"
+    # Ogg (Vorbis / Opus)
+    if header.startswith(b"OggS"):
+        return "audio"
+
+    # ------------------------- Text ---------------------------
     stripped = header.lstrip()
     if stripped.startswith(b"{") or stripped.startswith(b"["):
         return "text"
+
     return None
 
 

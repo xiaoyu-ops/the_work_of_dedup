@@ -235,48 +235,47 @@ class _CLAPEncoder:
 
 
 # ---------------------------------------------------------------------------
-# Two-stage signature: reuse spectrum-fingerprint peak hashes
+# Two-stage signature: coarse band-energy fingerprint
 # ---------------------------------------------------------------------------
 
 def _audio_signature(config: AudioQSemDedupConfig):
     """Return a closure that yields MinHash tokens for an audio path.
 
-    Tokens come from the spectrum fingerprint module's peak-pair landmarks if
-    available; otherwise we fall back to coarse band-energy quantization which
-    keeps two-stage usable without the full audio extras.
+    Tokens are coarse 8-band log-energy quantization vectors over 1-second
+    windows. Two clips that share spectro-temporal structure share a large
+    fraction of these tokens, which is sufficient for the LSH coarse-filter
+    role: the precision stage (CLAP) re-scores everything that survives.
+
+    A more elaborate Shazam-style peak-pair fingerprint is a future option,
+    but for plan A's two-stage pipeline this representation hits the right
+    cost/recall trade-off (no model, no GPU) on the order of microseconds
+    per clip.
     """
     cap = max(1, config.lsh_max_tokens)
 
     def _sig(path: Path) -> Iterable[bytes]:
-        emitted = 0
-        try:
-            from audio.method import spectrum_fingerprint as sf  # type: ignore
-
-            for token in sf.iter_peak_hashes(str(path)):  # type: ignore[attr-defined]
-                if emitted >= cap:
-                    return
-                yield bytes(token) if isinstance(token, (bytes, bytearray)) else str(token).encode("utf-8")
-                emitted += 1
-            return
-        except Exception:
-            pass
-
-        # Fallback: coarse band-energy quantization (mono, 8 bands, 1s windows)
         try:
             import librosa  # type: ignore
         except ImportError:
             return
         try:
             y, sr = librosa.load(
-                str(path), sr=config.target_sr, mono=True, duration=config.max_audio_seconds
+                str(path),
+                sr=config.target_sr,
+                mono=True,
+                duration=config.max_audio_seconds,
             )
         except Exception:
             return
         if y is None or len(y) == 0:
             return
+
         n_bands = 8
         win = sr  # 1-second window
+        emitted = 0
         for start in range(0, len(y) - win + 1, win):
+            if emitted >= cap:
+                return
             chunk = y[start : start + win]
             spec = np.abs(np.fft.rfft(chunk))
             band_size = max(1, len(spec) // n_bands)
@@ -284,10 +283,7 @@ def _audio_signature(config: AudioQSemDedupConfig):
             for b in range(n_bands):
                 seg = spec[b * band_size : (b + 1) * band_size]
                 energies.append(int(round(float(np.log1p(seg.sum())))))
-            tok = ":".join(str(e) for e in energies).encode("utf-8")
-            if emitted >= cap:
-                return
-            yield tok
+            yield ":".join(str(e) for e in energies).encode("utf-8")
             emitted += 1
 
     return _sig
@@ -296,6 +292,26 @@ def _audio_signature(config: AudioQSemDedupConfig):
 # ---------------------------------------------------------------------------
 # Main entry
 # ---------------------------------------------------------------------------
+
+def _emit_dup_record(
+    paths: Sequence[Path],
+    keeper_global: int,
+    dup_list: List[Any],
+    threshold: float,
+    cluster_id: int,
+    stage: str,
+) -> Dict[str, object]:
+    return {
+        "original": str(paths[keeper_global]),
+        "duplicates": [
+            {"path": str(paths[d_idx]), "similarity": float(sim)}
+            for d_idx, sim in dup_list
+        ],
+        "similarity_threshold": float(threshold),
+        "cluster_id": int(cluster_id),
+        "stage": stage,
+    }
+
 
 def deduplicate_qsemdedup(
     paths: Sequence[Path],
@@ -406,24 +422,4 @@ def deduplicate_qsemdedup(
         "duplicates": duplicates_out,
         "duplicate_count": duplicate_count,
         "skipped": 0,
-    }
-
-
-def _emit_dup_record(
-    paths: Sequence[Path],
-    keeper_global: int,
-    dup_list: List[Any],
-    threshold: float,
-    cluster_id: int,
-    stage: str,
-) -> Dict[str, object]:
-    return {
-        "original": str(paths[keeper_global]),
-        "duplicates": [
-            {"path": str(paths[d_idx]), "similarity": float(sim)}
-            for d_idx, sim in dup_list
-        ],
-        "similarity_threshold": float(threshold),
-        "cluster_id": int(cluster_id),
-        "stage": stage,
     }
