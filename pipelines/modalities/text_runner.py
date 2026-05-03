@@ -76,7 +76,14 @@ def main() -> None:
     except Exception:
         stats.setdefault("processed_bytes", None)
 
-    write_summary(output_dir, "text", stats, manifest_path, duplicates=result.duplicates)
+    write_summary(
+        output_dir,
+        "text",
+        stats,
+        manifest_path,
+        duplicates=result.duplicates,
+        keepers=result.keepers,
+    )
 
     print(
         f"[text runner] processed {len(paths)} entries (total candidates={total_candidates}); "

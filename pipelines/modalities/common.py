@@ -182,6 +182,7 @@ def write_summary(
     manifest_path: Path | None,
     *,
     duplicates: Optional[List[Dict[str, object]]] = None,
+    keepers: Optional[Iterable[Path]] = None,
 ) -> None:
     if output_dir is None:
         return
@@ -196,6 +197,16 @@ def write_summary(
             summary["duplicates_file"] = str(duplicates_path)
         except Exception as exc:  # pragma: no cover
             print(f"[modalities] failed to write duplicates list {duplicates_path}: {exc}")
+    if keepers is not None:
+        keepers_path = output_dir / f"{modality}_keepers.txt"
+        try:
+            keepers_list = [str(Path(p)) for p in keepers]
+            keepers_path.write_text("\n".join(keepers_list) + ("\n" if keepers_list else ""),
+                                    encoding="utf-8")
+            summary["keepers_file"] = str(keepers_path)
+            summary["keepers_count"] = len(keepers_list)
+        except Exception as exc:  # pragma: no cover
+            print(f"[modalities] failed to write keepers list {keepers_path}: {exc}")
     summary_path = output_dir / f"{modality}_runner_summary.json"
     try:
         summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")

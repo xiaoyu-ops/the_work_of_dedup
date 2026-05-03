@@ -12,6 +12,14 @@ from typing import Any, Dict, List, Optional
 from .artifacts import StageArtifact, save_artifact
 from .config import ConfigLoader, PipelineConfig
 from .executor import BaseExecutor, ExecutorError, create_executor
+from .joint_dedup import (
+    ModalityKeepers,
+    join_keepers,
+    load_keepers_from_output_dir,
+    load_keepers_from_summary,
+    stem_pair_id,
+    write_joint_summary,
+)
 from .logger import setup_logger
 from .manifest_utils import ManifestData, ManifestFormatError, load_manifest_data
 from .sorter_stage import run_sorter
@@ -1731,11 +1739,112 @@ class PipelineOrchestrator:
 
         return "\n".join(lines)
 
+    def run_joint_dedup_stage(self) -> None:
+        """Cross-modality joint dedup over per-modality keepers.
+
+        Runs after :meth:`run_modality_stages` and before :meth:`run_report_stage`.
+        Reads each modality runner's keepers list (written by the modality
+        runners as ``{modality}_keepers.txt`` and referenced from
+        ``{modality}_runner_summary.json``) and intersects them by pair id.
+
+        Configuration (under ``general.joint_dedup``):
+          - ``enabled`` (bool, default True): turn the stage on/off.
+          - ``pair_strategy`` (str, default "stem"): only "stem" is built in
+            for now; the function-level API supports custom strategies.
+
+        The stage is skipped — with a logged warning, not an error — when
+        fewer than 2 modalities produced keepers.
+        """
+        joint_cfg = (self.config.general or {}).get("joint_dedup") or {}
+        if joint_cfg.get("enabled") is False:
+            self.logger.info("Joint dedup stage disabled by config")
+            return
+
+        modality_outputs: Dict[str, str] = {}
+        for modality in ("image", "audio", "text"):
+            section = getattr(self.config, modality, {}) or {}
+            output_dir = section.get("output_dir")
+            if section.get("enabled", True) and output_dir:
+                modality_outputs[modality] = output_dir
+
+        modality_results: List[ModalityKeepers] = []
+        per_modality_meta: Dict[str, Dict[str, Any]] = {}
+        for modality, output_dir in modality_outputs.items():
+            summary_path = Path(output_dir) / f"{modality}_runner_summary.json"
+            keepers: List[Path] = []
+            if summary_path.exists():
+                try:
+                    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+                except Exception as exc:  # pragma: no cover
+                    self.logger.warning("Failed to read %s: %s", summary_path, exc)
+                    summary = {}
+                kfile = summary.get("keepers_file")
+                if kfile and Path(kfile).exists():
+                    try:
+                        keepers = [
+                            Path(line)
+                            for line in Path(kfile).read_text(encoding="utf-8").splitlines()
+                            if line.strip()
+                        ]
+                    except Exception as exc:  # pragma: no cover
+                        self.logger.warning("Failed to read keepers file %s: %s", kfile, exc)
+            if not keepers:
+                # Fallback: list output dir contents (works for runs that copied keepers).
+                keepers = load_keepers_from_output_dir(Path(output_dir))
+            if keepers:
+                modality_results.append(ModalityKeepers(name=modality, keepers=keepers))
+                per_modality_meta[modality] = {
+                    "output_dir": output_dir,
+                    "keepers": len(keepers),
+                }
+            else:
+                self.logger.info("Joint dedup: no keepers found for %s; skipping", modality)
+
+        if len(modality_results) < 2:
+            self.logger.info(
+                "Joint dedup stage requires >=2 modalities with keepers; got %d — skipping",
+                len(modality_results),
+            )
+            self.summary["joint_dedup"] = {
+                "skipped": True,
+                "reason": "fewer_than_two_modalities_with_keepers",
+                "modalities": list(per_modality_meta.keys()),
+            }
+            self._write_run_manifest()
+            return
+
+        # Default pair strategy is stem-based; advanced strategies are a
+        # function-level API extension for callers that need them.
+        pair_fn = stem_pair_id
+        result = join_keepers(modality_results, pair_id_fn=pair_fn)
+
+        # Persist the full mapping for downstream tools.
+        joint_summary_path = self.output_root / "joint_dedup_summary.json"
+        try:
+            write_joint_summary(result, joint_summary_path)
+        except Exception as exc:  # pragma: no cover
+            self.logger.warning("Failed to write joint dedup summary: %s", exc)
+
+        self.summary["joint_dedup"] = {
+            "skipped": False,
+            "summary_file": str(joint_summary_path),
+            "stats": result.stats,
+            "modalities": per_modality_meta,
+        }
+        self._write_run_manifest()
+        self.logger.info(
+            "Joint dedup: %d pairs survived across %d modalities (drops=%d)",
+            result.stats.get("joint_keepers", 0),
+            result.stats.get("input_modalities", 0),
+            result.stats.get("joint_drops", 0),
+        )
+
     def run(self) -> None:
         self.logger.info("Starting pipeline run %s", self.run_id)
         try:
             self.run_sorter_stage()
             self.run_modality_stages()
+            self.run_joint_dedup_stage()
             self.run_report_stage()
         finally:
             self.finalize()

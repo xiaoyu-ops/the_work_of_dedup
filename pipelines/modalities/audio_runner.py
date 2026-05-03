@@ -87,7 +87,14 @@ def main() -> None:
     except Exception:
         stats.setdefault("processed_bytes", None)
 
-    write_summary(output_dir, "audio", stats, manifest_path, duplicates=result.duplicates)
+    write_summary(
+        output_dir,
+        "audio",
+        stats,
+        manifest_path,
+        duplicates=result.duplicates,
+        keepers=result.keepers,
+    )
 
     print(
         f"[audio runner] processed {len(paths)} entries (total candidates={total_candidates}); "
