@@ -24,7 +24,12 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Optional, Sequence, Set
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+
+try:
+    import numpy as np
+except ImportError:  # pragma: no cover
+    np = None  # type: ignore
 
 
 PairIdFn = Callable[[Path], str]
@@ -158,6 +163,193 @@ def load_keepers_from_summary(summary_path: Path) -> List[Path]:
         return []
     raw = data.get("keepers") or []
     return [Path(p) for p in raw]
+
+
+# ---------------------------------------------------------------------------
+# Direction B: joint-similarity dedup (replaces "AND-of-per-modality")
+# ---------------------------------------------------------------------------
+#
+# Plan A innovation #2 — Direction B.
+#
+# Existing pipelines (SemDeDup / D4 / FairDeDup / EcoDatum) treat modalities
+# independently: dedup image, dedup text, then take the intersection. That
+# rule is OR-shaped — a pair is dropped if EITHER modality flagged it. This
+# discards pairs that are near-duplicate in one modality but contribute
+# diversity in the other (e.g., same image with paraphrased captions —
+# valuable for MLLM instruction tuning).
+#
+# Direction B replaces the OR rule with a weighted JOINT similarity:
+#
+#     sim_joint(pair_i, pair_j) = Σ_m  w_m · cos( emb_m(i), emb_m(j) )
+#
+# Two pairs collapse only when their joint similarity exceeds the threshold,
+# i.e., they are near-duplicate in *all* modalities simultaneously. The
+# decision moves from per-modality dedup to a true multimodal dedup decision.
+
+@dataclass
+class JointSimilarityResult:
+    """Return shape for :func:`joint_similarity_dedup`.
+
+    ``pair_keepers`` is the surviving set; ``dup_groups`` maps each keeper
+    pair_id to the list of (dropped_pair_id, sim_joint) it absorbed.
+    """
+
+    pair_keepers: List[str] = field(default_factory=list)
+    dup_groups: Dict[str, List[Tuple[str, float]]] = field(default_factory=dict)
+    stats: Dict[str, Any] = field(default_factory=dict)
+
+
+def _l2_normalize(matrix: "np.ndarray") -> "np.ndarray":
+    norms = np.linalg.norm(matrix, axis=1, keepdims=True) + 1e-12
+    return (matrix / norms).astype(np.float32, copy=False)
+
+
+def _build_joint_embedding(
+    modality_embeddings: Dict[str, "np.ndarray"],
+    modality_weights: Dict[str, float],
+) -> "np.ndarray":
+    """Weighted concatenation of L2-normalized per-modality embeddings.
+
+    Modalities present in ``modality_weights`` but missing from
+    ``modality_embeddings`` are skipped. Each block is L2-normalized and
+    scaled by ``sqrt(w_m)`` so that the dot product of two joint embeddings
+    equals ``Σ w_m · cos(emb_m(i), emb_m(j))``.
+    """
+    if np is None:
+        raise RuntimeError("numpy is required for joint_similarity_dedup")
+    aligned: List["np.ndarray"] = []
+    weight_sum = sum(modality_weights.get(m, 0.0) for m in modality_embeddings.keys())
+    if weight_sum <= 0:
+        raise ValueError("modality_weights must contain positive entries")
+
+    n_rows: Optional[int] = None
+    for modality, emb in modality_embeddings.items():
+        w = modality_weights.get(modality, 0.0)
+        if w <= 0:
+            continue
+        if emb is None or emb.size == 0:
+            continue
+        emb = np.asarray(emb, dtype=np.float32)
+        if n_rows is None:
+            n_rows = emb.shape[0]
+        elif emb.shape[0] != n_rows:
+            raise ValueError(
+                f"all modality embeddings must share row count; "
+                f"got {emb.shape[0]} for {modality} (expected {n_rows})"
+            )
+        block = _l2_normalize(emb) * float(np.sqrt(w / weight_sum))
+        aligned.append(block.astype(np.float32, copy=False))
+
+    if not aligned or n_rows is None:
+        raise ValueError("no non-empty modality embeddings provided")
+
+    joint = np.concatenate(aligned, axis=1)
+    # Re-normalize the joint embedding so cosine on it is bounded in [-1, 1].
+    return _l2_normalize(joint)
+
+
+def joint_similarity_dedup(
+    pair_ids: Sequence[str],
+    modality_embeddings: Dict[str, "np.ndarray"],
+    modality_weights: Dict[str, float],
+    *,
+    quality: Optional["np.ndarray"] = None,
+    eps: float = 0.05,
+    alpha: float = 0.7,
+    n_clusters: Optional[int] = None,
+) -> JointSimilarityResult:
+    """Pair-level Q-SemDeDup on a weighted joint embedding.
+
+    Parameters
+    ----------
+    pair_ids
+        N pair identifiers (e.g. file stems). Each row of every entry in
+        ``modality_embeddings`` corresponds to ``pair_ids[i]``.
+    modality_embeddings
+        ``{modality_name: [N, D_m]}`` per-modality embedding matrices. Missing
+        modalities for individual pairs should be represented as zero rows by
+        the caller.
+    modality_weights
+        ``{modality_name: weight}`` non-negative weights. Re-normalized to
+        sum to 1 internally.
+    quality
+        Optional ``[N]`` quality vector (e.g. cross-modal alignment from
+        Direction A). When provided, drives in-cluster ranking via
+        ``Score = alpha·Sim(x,C) + (1-alpha)·Norm(quality)``.
+    eps
+        ``threshold = 1 - eps`` over joint cosine similarity.
+    alpha
+        Q-SemDeDup quality / cohesion trade-off.
+    n_clusters
+        KMeans cluster count for grouping; ``None`` triggers the
+        ``max(1, N // 100)`` heuristic shared with the per-modality runners.
+    """
+    if np is None:
+        raise RuntimeError("numpy is required for joint_similarity_dedup")
+    if not pair_ids:
+        return JointSimilarityResult(stats={"input_pairs": 0})
+
+    from pipelines.qsemdedup_core import (
+        kmeans_groups,
+        normalize_quality,
+        select_q_semdedup,
+    )
+
+    n = len(pair_ids)
+    joint_emb = _build_joint_embedding(modality_embeddings, modality_weights)
+    if joint_emb.shape[0] != n:
+        raise ValueError(
+            f"pair_ids length {n} does not match joint embedding rows "
+            f"{joint_emb.shape[0]}"
+        )
+
+    if quality is None:
+        quality = np.zeros(n, dtype=np.float32)
+    quality_norm = normalize_quality(np.asarray(quality, dtype=np.float32))
+
+    threshold = 1.0 - float(eps)
+    labels = kmeans_groups(joint_emb, n_clusters=n_clusters)
+    cluster_to_idx: Dict[int, List[int]] = {}
+    for idx, lab in enumerate(labels):
+        cluster_to_idx.setdefault(int(lab), []).append(idx)
+
+    keep_flags = np.zeros(n, dtype=bool)
+    dup_groups: Dict[str, List[Tuple[str, float]]] = {}
+    duplicate_count = 0
+
+    for cluster_id, members in cluster_to_idx.items():
+        if len(members) < 2:
+            for idx in members:
+                keep_flags[idx] = True
+            continue
+        member_feats = joint_emb[members]
+        member_qual = quality_norm[members]
+        result = select_q_semdedup(
+            members, member_feats, member_qual, threshold, alpha
+        )
+        for k in result["keep_indices"]:
+            keep_flags[k] = True
+        for keeper_global, dups in result["dup_groups"].items():
+            keeper_id = pair_ids[keeper_global]
+            entries = dup_groups.setdefault(keeper_id, [])
+            for d_idx, sim in dups:
+                entries.append((pair_ids[d_idx], float(sim)))
+                duplicate_count += 1
+
+    keepers = [pair_ids[i] for i in range(n) if keep_flags[i]]
+    return JointSimilarityResult(
+        pair_keepers=keepers,
+        dup_groups=dup_groups,
+        stats={
+            "input_pairs": n,
+            "joint_keepers": len(keepers),
+            "joint_drops": duplicate_count,
+            "n_clusters_actual": len(cluster_to_idx),
+            "threshold": threshold,
+            "alpha": alpha,
+            "modality_weights": dict(modality_weights),
+        },
+    )
 
 
 def write_joint_summary(result: JointDedupResult, summary_path: Path) -> None:
