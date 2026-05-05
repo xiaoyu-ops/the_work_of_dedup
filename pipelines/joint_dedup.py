@@ -257,6 +257,7 @@ def joint_similarity_dedup(
     eps: float = 0.05,
     alpha: float = 0.7,
     n_clusters: Optional[int] = None,
+    adaptive_eps_lambda: float = 0.0,
 ) -> JointSimilarityResult:
     """Pair-level Q-SemDeDup on a weighted joint embedding.
 
@@ -283,6 +284,12 @@ def joint_similarity_dedup(
     n_clusters
         KMeans cluster count for grouping; ``None`` triggers the
         ``max(1, N // 100)`` heuristic shared with the per-modality runners.
+    adaptive_eps_lambda
+        Plan A direction C: per-cluster ε scaled by cluster compactness.
+        ``0.0`` (default) keeps the constant ``eps`` everywhere — equivalent
+        to the original Q-SemDeDup. Positive values tighten the threshold for
+        diverse clusters (preserving cross-modal-rich content) and loosen it
+        for tight clusters (collapsing redundancies aggressively).
     """
     if np is None:
         raise RuntimeError("numpy is required for joint_similarity_dedup")
@@ -290,6 +297,7 @@ def joint_similarity_dedup(
         return JointSimilarityResult(stats={"input_pairs": 0})
 
     from pipelines.qsemdedup_core import (
+        adaptive_threshold,
         kmeans_groups,
         normalize_quality,
         select_q_semdedup,
@@ -317,6 +325,7 @@ def joint_similarity_dedup(
     dup_groups: Dict[str, List[Tuple[str, float]]] = {}
     duplicate_count = 0
 
+    per_cluster_thresholds: Dict[int, float] = {}
     for cluster_id, members in cluster_to_idx.items():
         if len(members) < 2:
             for idx in members:
@@ -324,8 +333,14 @@ def joint_similarity_dedup(
             continue
         member_feats = joint_emb[members]
         member_qual = quality_norm[members]
+        cluster_threshold = (
+            adaptive_threshold(threshold, member_feats, lambda_=adaptive_eps_lambda)
+            if adaptive_eps_lambda > 0
+            else threshold
+        )
+        per_cluster_thresholds[int(cluster_id)] = cluster_threshold
         result = select_q_semdedup(
-            members, member_feats, member_qual, threshold, alpha
+            members, member_feats, member_qual, cluster_threshold, alpha
         )
         for k in result["keep_indices"]:
             keep_flags[k] = True
@@ -347,6 +362,8 @@ def joint_similarity_dedup(
             "n_clusters_actual": len(cluster_to_idx),
             "threshold": threshold,
             "alpha": alpha,
+            "adaptive_eps_lambda": adaptive_eps_lambda,
+            "per_cluster_thresholds": per_cluster_thresholds,
             "modality_weights": dict(modality_weights),
         },
     )

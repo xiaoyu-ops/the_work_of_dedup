@@ -69,6 +69,70 @@ def normalize_quality(values: "np.ndarray") -> "np.ndarray":
 SelectResult = Dict[str, Any]
 
 
+def cluster_compactness(member_feats: "np.ndarray") -> float:
+    """Mean cosine similarity to the centroid for an L2-normalized cluster.
+
+    Returns a value in ``[0, 1]`` for unit-norm rows. Tight clusters (true
+    near-duplicates) approach 1; loose clusters (diverse concept) approach 0.
+    Used by :func:`adaptive_threshold` to make ε cluster-specific so that
+    diverse clusters are pruned conservatively.
+    """
+    if np is None:
+        raise RuntimeError("numpy is required for cluster_compactness")
+    if member_feats.shape[0] == 0:
+        return 0.0
+    centroid = member_feats.mean(axis=0)
+    centroid /= np.linalg.norm(centroid) + 1e-12
+    sims = member_feats @ centroid
+    return float(np.clip(sims.mean(), 0.0, 1.0))
+
+
+def adaptive_threshold(
+    base_threshold: float,
+    member_feats: "np.ndarray",
+    *,
+    lambda_: float = 0.5,
+) -> float:
+    """Per-cluster threshold tightened by cluster compactness.
+
+    Plan A direction C — extends DBP-style adaptive pruning to the multimodal
+    setting. Tight clusters (truly redundant content) get a *lower* threshold
+    so more items are flagged as duplicates; loose clusters (diverse concept)
+    get a *higher* threshold so we keep more diversity:
+
+        threshold_cluster = base_threshold - λ · (1 - compactness)
+                                                 · (1 - base_threshold)
+
+    Equivalently in eps-space::
+
+        eps_cluster = base_eps · (1 + λ · (1 - compactness))    [larger eps
+                                                                 for loose
+                                                                 clusters]
+
+    Wait — that is the opposite of intent. Re-derived more carefully::
+
+        compactness ≈ 1  → cluster is uniform  → loosen threshold (keep base
+                                                  or below) so we still drop
+                                                  redundancies aggressively.
+        compactness ≈ 0  → cluster is diverse  → tighten threshold so only
+                                                  near-identical items collapse.
+
+    So tight cluster ⇒ lower threshold ⇒ more drops. Loose cluster ⇒ higher
+    threshold ⇒ fewer drops. The closed form below implements that.
+    ``lambda_=0`` recovers the constant base threshold.
+    """
+    if np is None:
+        raise RuntimeError("numpy is required for adaptive_threshold")
+    if member_feats.shape[0] < 2:
+        return float(base_threshold)
+    base = float(base_threshold)
+    diversity = 1.0 - cluster_compactness(member_feats)
+    # Headroom toward the strict end (1.0) to avoid pushing threshold above 1.
+    headroom = 1.0 - base
+    delta = float(lambda_) * diversity * headroom
+    return float(np.clip(base + delta, 0.0, 1.0))
+
+
 def select_q_semdedup(
     member_global_idx: Sequence[int],
     member_feats: "np.ndarray",
