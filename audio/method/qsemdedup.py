@@ -353,6 +353,9 @@ def deduplicate_qsemdedup(
     #    tokens. Avoids re-loading the file for the signature step. CLAP loads
     #    its own copy internally — that read we cannot avoid without rewriting
     #    the encoder, so the lower bound is 2x I/O per file (us + CLAP).
+    use_cross_modal = (config.quality_metric or "snr").lower() == "cross_modal"
+    inner_metric = "snr" if use_cross_modal else config.quality_metric
+
     qualities = np.zeros(n, dtype=np.float32)
     pre_signatures: Optional[List[List[bytes]]] = (
         [[] for _ in range(n)] if config.two_stage else None
@@ -361,11 +364,33 @@ def deduplicate_qsemdedup(
     for i, p in enumerate(paths):
         try:
             wav, sr = _load_waveform(Path(p), config.target_sr, config.max_audio_seconds)
-            qualities[i] = float(_quality_score(wav, sr, config.quality_metric))
+            qualities[i] = float(_quality_score(wav, sr, inner_metric))
             if pre_signatures is not None:
                 pre_signatures[i] = _band_energy_tokens(wav, sr, sig_cap)
         except Exception:
             qualities[i] = 0.0
+
+    if use_cross_modal:
+        try:
+            from pipelines.cross_modal_quality import cross_modal_quality_for_audio
+        except Exception as exc:
+            print(
+                f"[audio qsemdedup] cross_modal quality unavailable ({exc}); "
+                "falling back to SNR"
+            )
+        else:
+            try:
+                qualities = cross_modal_quality_for_audio(
+                    list(paths),
+                    device=config.device,
+                    fallback=qualities,
+                )
+            except Exception as exc:
+                print(
+                    f"[audio qsemdedup] cross_modal scoring failed ({exc}); "
+                    "keeping SNR fallback"
+                )
+
     qualities_norm = normalize_quality(qualities)
 
     threshold = 1.0 - float(config.eps)

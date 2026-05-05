@@ -87,6 +87,43 @@ def _quality_score(text: str, metric: str) -> float:
     return _shannon_entropy(text)
 
 
+def _build_text_quality(
+    paths: Sequence[Path],
+    texts: Sequence[str],
+    metric: str,
+) -> "np.ndarray":
+    """Per-text quality vector. Supports entropy / length / cross_modal.
+
+    For ``cross_modal`` we look up an image sidecar (``<stem>.<jpg|png|...>``)
+    and score CLIP(text, image) alignment. Texts without an image sidecar
+    (or when CLIP is unavailable) fall back to Shannon entropy.
+    """
+    metric_lc = (metric or "entropy").lower()
+    if metric_lc == "cross_modal":
+        try:
+            from pipelines.cross_modal_quality import cross_modal_quality_for_texts
+        except Exception as exc:
+            print(
+                f"[text qsemdedup] cross_modal quality unavailable ({exc}); "
+                "falling back to entropy"
+            )
+        else:
+            try:
+                fallback = np.array(
+                    [_shannon_entropy(t) for t in texts], dtype=np.float32
+                )
+                return cross_modal_quality_for_texts(list(paths), fallback=fallback)
+            except Exception as exc:
+                print(
+                    f"[text qsemdedup] cross_modal scoring failed ({exc}); "
+                    "falling back to entropy"
+                )
+    return np.array(
+        [_quality_score(t, metric_lc) for t in texts],
+        dtype=np.float32,
+    )
+
+
 def _encode_texts(texts: Sequence[str], config: QSemDedupConfig) -> "np.ndarray":
     """Run SBERT to produce L2-normalized embeddings."""
     try:
@@ -168,10 +205,7 @@ def deduplicate_qsemdedup(
     if n == 0:
         return {"keepers": [], "duplicates": [], "duplicate_count": 0, "skipped": 0}
 
-    qualities = np.array(
-        [_quality_score(t, config.quality_metric) for t in texts],
-        dtype=np.float32,
-    )
+    qualities = _build_text_quality(paths, texts, config.quality_metric)
     qualities_norm = normalize_quality(qualities)
     threshold = 1.0 - float(config.eps)
 

@@ -38,10 +38,15 @@ audio = [
 
 # Text: optional faster dedup methods (default jaccard needs no extras).
 # Includes Q-SemDeDup deps (sentence-transformers + scikit-learn).
+# Pin sentence-transformers <5.0 because 5.x's modality_types module imports
+# torchcodec at top level; torchcodec requires system FFmpeg shared libs
+# (libavutil etc.) which are not present on a default macOS install. The 4.x
+# series doesn't have this transitive dependency. Once ffmpeg is universally
+# available (or sentence-transformers makes torchcodec optional) we can lift.
 text = [
     "datasketch>=1.6",
     "simhash>=2.1",
-    "sentence-transformers>=2.6",
+    "sentence-transformers>=2.6,<5.0",
     "scikit-learn>=1.3",
 ]
 

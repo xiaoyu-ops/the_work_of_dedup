@@ -539,9 +539,16 @@ def _run_deduplication(
 def _compute_image_quality(paths: Sequence[Path], metric: str) -> np.ndarray:
     """Per-image quality signal feeding the Q-SemDeDup score.
 
-    ``file_size``: byte size from ``Path.stat()``. Cheap, no decode.
-    ``resolution``: width * height from the image header (PIL lazy-load — only
-    metadata is parsed, not pixels). Falls back to file_size on read errors.
+    Supported metrics:
+    - ``file_size``: byte size from ``Path.stat()``. Cheap, no decode.
+    - ``resolution``: width * height from the image header (PIL lazy-load —
+      only metadata is parsed, not pixels). Falls back to file_size on read
+      errors.
+    - ``cross_modal``: cross-modal alignment score (CLIP cosine) between the
+      image and its sidecar text caption (``<stem>.txt``). Pairs without a
+      sidecar fall back to file_size. This is plan A's direction-A signal —
+      pairs that are tightly aligned across modalities are preferred during
+      in-cluster selection.
     """
     metric = (metric or "file_size").lower()
     if metric == "resolution":
@@ -560,6 +567,27 @@ def _compute_image_quality(paths: Sequence[Path], metric: str) -> np.ndarray:
                     except Exception:
                         values[i] = 0.0
             return values
+
+    if metric == "cross_modal":
+        try:
+            from pipelines.cross_modal_quality import cross_modal_quality_for_images
+        except Exception as exc:
+            print(
+                f"[image pipeline] cross_modal quality unavailable ({exc}); "
+                "falling back to file_size"
+            )
+        else:
+            try:
+                fallback = np.array(
+                    [p.stat().st_size for p in paths], dtype=np.float32
+                )
+                return cross_modal_quality_for_images(list(paths), fallback=fallback)
+            except Exception as exc:
+                print(
+                    f"[image pipeline] cross_modal scoring failed ({exc}); "
+                    "falling back to file_size"
+                )
+
     # default: file size
     return np.array([p.stat().st_size for p in paths], dtype=np.float32)
 
